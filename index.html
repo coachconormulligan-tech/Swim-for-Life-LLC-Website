@@ -220,6 +220,12 @@
         const [editingNote, setEditingNote] = useState('');
         // Per-weekday time settings: { 0: ['4:00 PM', '3:30 PM'], 1: [...], ... }
         const [weekdayTimeSettings, setWeekdayTimeSettings] = useState({});
+        // Lesson editing state
+        const [editingLesson, setEditingLesson] = useState(null);
+        const [editLessonData, setEditLessonData] = useState({});
+        // Student contact editing state
+        const [editingStudentContact, setEditingStudentContact] = useState(null);
+        const [editContactData, setEditContactData] = useState({ parentName: '', email: '', phone: '' });
 
         // Helper to get lesson times for a specific weekday
         const getLessonTimesForDay = (dayIndex) => {
@@ -478,6 +484,114 @@
         const cancelSingleLesson = (dateKey, lesson) => {
             setCancelTarget({ type: 'single', dateKey, lesson });
             setShowCancelModal(true);
+        };
+
+        const startEditingLesson = (lesson) => {
+            setEditingLesson(lesson);
+            setEditLessonData({
+                parentName: lesson.parentName || '',
+                email: lesson.email || '',
+                phone: lesson.phone || '',
+                swimmer1Name: lesson.swimmer1Name || '',
+                swimmer1Age: lesson.swimmer1Age || '',
+                swimmer2Name: lesson.swimmer2Name || '',
+                swimmer2Age: lesson.swimmer2Age || '',
+                lessonType: lesson.lessonType || 'private',
+                time: lesson.time,
+                newDateKey: lesson.dateKey
+            });
+        };
+
+        const saveEditedLesson = async () => {
+            if (!editingLesson) return;
+            
+            const oldDateKey = editingLesson.dateKey;
+            const oldTime = editingLesson.time;
+            const newDateKey = editLessonData.newDateKey;
+            const newTime = editLessonData.time;
+            
+            // Create updated lesson object
+            const updatedLesson = {
+                ...editingLesson,
+                parentName: editLessonData.parentName,
+                email: editLessonData.email,
+                phone: editLessonData.phone,
+                swimmer1Name: editLessonData.swimmer1Name,
+                swimmer1Age: editLessonData.swimmer1Age,
+                swimmer2Name: editLessonData.swimmer2Name,
+                swimmer2Age: editLessonData.swimmer2Age,
+                lessonType: editLessonData.lessonType,
+                time: newTime,
+                price: editLessonData.lessonType === 'group' ? 70 : 40
+            };
+            delete updatedLesson.date;
+            delete updatedLesson.dateKey;
+            delete updatedLesson.isCancelled;
+            
+            let newBookedLessons = { ...bookedLessons };
+            
+            // If date/time changed, we need to move the lesson
+            if (oldDateKey !== newDateKey || oldTime !== newTime) {
+                // Remove from old location
+                if (newBookedLessons[oldDateKey]) {
+                    newBookedLessons[oldDateKey] = newBookedLessons[oldDateKey].filter(l => l.time !== oldTime);
+                    if (newBookedLessons[oldDateKey].length === 0) {
+                        delete newBookedLessons[oldDateKey];
+                    }
+                }
+                // Add to new location
+                if (!newBookedLessons[newDateKey]) {
+                    newBookedLessons[newDateKey] = [];
+                }
+                newBookedLessons[newDateKey].push(updatedLesson);
+            } else {
+                // Just update in place
+                newBookedLessons[oldDateKey] = newBookedLessons[oldDateKey].map(l => 
+                    l.time === oldTime ? updatedLesson : l
+                );
+            }
+            
+            setBookedLessons(newBookedLessons);
+            await saveLessons(newBookedLessons);
+            setEditingLesson(null);
+            setEditLessonData({});
+        };
+
+        // Update contact info for a student across all their lessons
+        const updateStudentContact = async (studentName, oldEmail, newContactData) => {
+            const studentNameLower = studentName.toLowerCase().trim();
+            let newBookedLessons = { ...bookedLessons };
+            let updated = false;
+            
+            Object.entries(newBookedLessons).forEach(([dateKey, lessons]) => {
+                newBookedLessons[dateKey] = lessons.map(lesson => {
+                    // Check if this lesson belongs to the student (as swimmer1 or swimmer2)
+                    const isSwimmer1 = lesson.swimmer1Name && lesson.swimmer1Name.toLowerCase().trim() === studentNameLower;
+                    const isSwimmer2 = lesson.swimmer2Name && lesson.swimmer2Name.toLowerCase().trim() === studentNameLower;
+                    
+                    // Also verify by email to avoid false matches
+                    const emailMatches = lesson.email && oldEmail && lesson.email.toLowerCase().trim() === oldEmail.toLowerCase().trim();
+                    
+                    if ((isSwimmer1 || isSwimmer2) && emailMatches) {
+                        updated = true;
+                        return {
+                            ...lesson,
+                            parentName: newContactData.parentName,
+                            email: newContactData.email,
+                            phone: newContactData.phone
+                        };
+                    }
+                    return lesson;
+                });
+            });
+            
+            if (updated) {
+                setBookedLessons(newBookedLessons);
+                await saveLessons(newBookedLessons);
+            }
+            
+            setEditingStudentContact(null);
+            setEditContactData({ parentName: '', email: '', phone: '' });
         };
 
         const getAllLessons = () => {
@@ -896,7 +1010,12 @@ END:VEVENT
                                                 <td>{lesson.swimmer1Name ? <>{lesson.swimmer1Name}{lesson.swimmer1Age ? ` (${lesson.swimmer1Age})` : ''}{lesson.swimmer2Name && <><br/>{lesson.swimmer2Name}{lesson.swimmer2Age ? ` (${lesson.swimmer2Age})` : ''}</>}</> : '-'}</td>
                                                 <td>{lesson.email || lesson.phone ? <>{lesson.email && <div>{lesson.email}</div>}{lesson.phone && <div>{lesson.phone}</div>}</> : '-'}</td>
                                                 <td>${lesson.price || 0}</td>
-                                                <td>{!lesson.isCancelled && <button className="btn btn-danger btn-small" onClick={() => cancelSingleLesson(lesson.dateKey, lesson)}>Cancel</button>}</td>
+                                                <td>{!lesson.isCancelled ? (
+                                                    <div style={{display: 'flex', gap: '0.25rem'}}>
+                                                        <button className="btn btn-small" style={{background: '#3b82f6', color: 'white'}} onClick={() => startEditingLesson(lesson)}>Edit</button>
+                                                        <button className="btn btn-danger btn-small" onClick={() => cancelSingleLesson(lesson.dateKey, lesson)}>Cancel</button>
+                                                    </div>
+                                                ) : <span style={{color: '#94a3b8', fontSize: '0.75rem'}}>—</span>}</td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -1314,7 +1433,7 @@ END:VEVENT
                                                     </div>
                                                     <div style={{background: '#fef3c7', padding: '1rem', borderRadius: '8px', textAlign: 'center'}}>
                                                         <div style={{fontSize: '1.5rem', fontWeight: 700, color: '#92400e'}}>${selectedStudent.totalSpent}</div>
-                                                        <div style={{fontSize: '0.75rem', color: '#64748b'}}>Total Spent</div>
+                                                        <div style={{fontSize: '0.75rem', color: '#64748b'}}>Total Profit</div>
                                                     </div>
                                                 </div>
                                                 
@@ -1324,9 +1443,63 @@ END:VEVENT
                                                         <h4 style={{margin: '0 0 0.75rem 0', fontSize: '0.875rem', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em'}}>Contact Info</h4>
                                                         {selectedStudent.parents.map((parent, i) => (
                                                             <div key={i} style={{background: '#f8fafc', padding: '0.75rem 1rem', borderRadius: '8px', marginBottom: '0.5rem'}}>
-                                                                <div style={{fontWeight: 500}}>{parent.name}</div>
-                                                                {parent.email && <div style={{fontSize: '0.875rem', color: '#3b82f6'}}>{parent.email}</div>}
-                                                                {parent.phone && <div style={{fontSize: '0.875rem', color: '#64748b'}}>{parent.phone}</div>}
+                                                                {editingStudentContact === `${selectedStudent.name}-${i}` ? (
+                                                                    <div style={{display: 'flex', flexDirection: 'column', gap: '0.5rem'}}>
+                                                                        <input 
+                                                                            type="text" 
+                                                                            value={editContactData.parentName}
+                                                                            onChange={(e) => setEditContactData({...editContactData, parentName: e.target.value})}
+                                                                            placeholder="Parent Name"
+                                                                            className="form-input"
+                                                                            style={{margin: 0, padding: '0.5rem'}}
+                                                                        />
+                                                                        <input 
+                                                                            type="email" 
+                                                                            value={editContactData.email}
+                                                                            onChange={(e) => setEditContactData({...editContactData, email: e.target.value})}
+                                                                            placeholder="Email"
+                                                                            className="form-input"
+                                                                            style={{margin: 0, padding: '0.5rem'}}
+                                                                        />
+                                                                        <input 
+                                                                            type="tel" 
+                                                                            value={editContactData.phone}
+                                                                            onChange={(e) => setEditContactData({...editContactData, phone: e.target.value})}
+                                                                            placeholder="Phone"
+                                                                            className="form-input"
+                                                                            style={{margin: 0, padding: '0.5rem'}}
+                                                                        />
+                                                                        <div style={{display: 'flex', gap: '0.5rem', marginTop: '0.25rem'}}>
+                                                                            <button 
+                                                                                onClick={() => updateStudentContact(selectedStudent.name, parent.email, editContactData)}
+                                                                                style={{padding: '0.375rem 0.75rem', background: '#059669', color: 'white', border: 'none', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit'}}
+                                                                            >Save</button>
+                                                                            <button 
+                                                                                onClick={() => { setEditingStudentContact(null); setEditContactData({ parentName: '', email: '', phone: '' }); }}
+                                                                                style={{padding: '0.375rem 0.75rem', background: '#64748b', color: 'white', border: 'none', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit'}}
+                                                                            >Cancel</button>
+                                                                        </div>
+                                                                    </div>
+                                                                ) : (
+                                                                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start'}}>
+                                                                        <div>
+                                                                            <div style={{fontWeight: 500}}>{parent.name}</div>
+                                                                            {parent.email && <div style={{fontSize: '0.875rem', color: '#3b82f6'}}>{parent.email}</div>}
+                                                                            {parent.phone && <div style={{fontSize: '0.875rem', color: '#64748b'}}>{parent.phone}</div>}
+                                                                        </div>
+                                                                        <button 
+                                                                            onClick={() => {
+                                                                                setEditingStudentContact(`${selectedStudent.name}-${i}`);
+                                                                                setEditContactData({
+                                                                                    parentName: parent.name || '',
+                                                                                    email: parent.email || '',
+                                                                                    phone: parent.phone || ''
+                                                                                });
+                                                                            }}
+                                                                            style={{padding: '0.25rem 0.5rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', fontSize: '0.7rem', cursor: 'pointer', fontFamily: 'inherit'}}
+                                                                        >Edit</button>
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         ))}
                                                     </div>
@@ -1380,6 +1553,23 @@ END:VEVENT
                                                                         }}>{lesson.type === 'group' ? 'Group' : 'Private'}</span>
                                                                         {lesson.isCancelled && <span style={{fontSize: '0.75rem', color: '#dc2626'}}>Cancelled</span>}
                                                                         {!lesson.isCancelled && !isPast && <span style={{fontSize: '0.75rem', color: '#059669'}}>Upcoming</span>}
+                                                                        {!lesson.isCancelled && (
+                                                                            <button 
+                                                                                onClick={() => {
+                                                                                    // Find the full lesson data from bookedLessons
+                                                                                    const lessonsOnDay = bookedLessons[lesson.dateKey] || [];
+                                                                                    const fullLesson = lessonsOnDay.find(l => l.time === lesson.time);
+                                                                                    if (fullLesson) {
+                                                                                        startEditingLesson({
+                                                                                            ...fullLesson,
+                                                                                            date: lesson.date,
+                                                                                            dateKey: lesson.dateKey
+                                                                                        });
+                                                                                    }
+                                                                                }}
+                                                                                style={{padding: '0.2rem 0.5rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', fontSize: '0.65rem', cursor: 'pointer', fontFamily: 'inherit'}}
+                                                                            >Edit</button>
+                                                                        )}
                                                                     </div>
                                                                 </div>
                                                             );
@@ -1418,6 +1608,116 @@ END:VEVENT
                                 {cancelTarget.type === 'single' ? <p>Are you sure you want to cancel this lesson?</p> : cancelTarget.type === 'date' ? <p>This day has <strong>{cancelTarget.lessons.length} lesson(s)</strong> booked. Blocking this day will cancel all of them.</p> : <p>There are <strong>{cancelTarget.lessons.length} lesson(s)</strong> booked on {DAYS[cancelTarget.dayIndex]}s. Blocking all {DAYS[cancelTarget.dayIndex]}s will cancel all of them.</p>}
                                 {cancelTarget.type !== 'single' && <div className="conflict-list">{(cancelTarget.type === 'date' ? cancelTarget.lessons : cancelTarget.lessons.slice(0, 5)).map((item, i) => { const lesson = cancelTarget.type === 'date' ? item : item.lesson; const dk = cancelTarget.type === 'date' ? cancelTarget.dateKey : item.dateKey; const [y, m, d] = dk.split('-').map(Number); return <div key={i} className="conflict-date">{new Date(y, m, d).toLocaleDateString()} - {lesson.time} - {lesson.swimmer1Name || 'Unknown'}</div>; })}{cancelTarget.type === 'weekday' && cancelTarget.lessons.length > 5 && <div className="conflict-date">...and {cancelTarget.lessons.length - 5} more</div>}</div>}
                                 <div className="btn-row"><button onClick={confirmCancellation} className="btn btn-danger">Yes, Cancel {cancelTarget.type === 'single' ? 'Lesson' : `${cancelTarget.lessons.length} Lesson(s)`}</button><button onClick={() => { setShowCancelModal(false); setCancelTarget(null); }} className="btn btn-secondary">Go Back</button></div>
+                            </div>
+                        </div>
+                    )}
+                    {editingLesson && (
+                        <div className="modal-overlay">
+                            <div className="modal" style={{maxWidth: '500px'}}>
+                                <h4 style={{color: '#1e40af'}}>Edit Lesson</h4>
+                                <p style={{color: '#64748b', marginBottom: '1rem', fontSize: '0.875rem'}}>
+                                    Original: {editingLesson.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} at {editingLesson.time}
+                                </p>
+                                
+                                <div style={{display: 'grid', gap: '0.75rem'}}>
+                                    <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem'}}>
+                                        <div className="form-group" style={{margin: 0}}>
+                                            <label style={{fontSize: '0.75rem', fontWeight: 600}}>Date</label>
+                                            <input 
+                                                type="date" 
+                                                value={(() => {
+                                                    const [y, m, d] = editLessonData.newDateKey?.split('-').map(Number) || [];
+                                                    if (!y) return '';
+                                                    return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                                                })()}
+                                                onChange={(e) => {
+                                                    const d = new Date(e.target.value);
+                                                    const newDateKey = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+                                                    setEditLessonData({...editLessonData, newDateKey});
+                                                }}
+                                                className="form-input"
+                                                style={{margin: 0}}
+                                            />
+                                        </div>
+                                        <div className="form-group" style={{margin: 0}}>
+                                            <label style={{fontSize: '0.75rem', fontWeight: 600}}>Time</label>
+                                            <select 
+                                                value={editLessonData.time} 
+                                                onChange={(e) => setEditLessonData({...editLessonData, time: e.target.value})}
+                                                className="form-select"
+                                                style={{margin: 0}}
+                                            >
+                                                {ALL_LESSON_TIMES.map(t => <option key={t} value={t}>{t}</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="form-group" style={{margin: 0}}>
+                                        <label style={{fontSize: '0.75rem', fontWeight: 600}}>Lesson Type</label>
+                                        <select 
+                                            value={editLessonData.lessonType} 
+                                            onChange={(e) => setEditLessonData({...editLessonData, lessonType: e.target.value})}
+                                            className="form-select"
+                                            style={{margin: 0}}
+                                        >
+                                            <option value="private">Private ($40)</option>
+                                            <option value="group">Group ($70)</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div style={{borderTop: '1px solid #e2e8f0', paddingTop: '0.75rem', marginTop: '0.25rem'}}>
+                                        <div style={{fontSize: '0.75rem', fontWeight: 600, color: '#475569', marginBottom: '0.5rem'}}>Parent/Contact</div>
+                                        <div className="form-group" style={{margin: '0 0 0.5rem 0'}}>
+                                            <label style={{fontSize: '0.75rem'}}>Parent Name</label>
+                                            <input type="text" value={editLessonData.parentName} onChange={(e) => setEditLessonData({...editLessonData, parentName: e.target.value})} className="form-input" style={{margin: 0}} />
+                                        </div>
+                                        <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem'}}>
+                                            <div className="form-group" style={{margin: 0}}>
+                                                <label style={{fontSize: '0.75rem'}}>Email</label>
+                                                <input type="email" value={editLessonData.email} onChange={(e) => setEditLessonData({...editLessonData, email: e.target.value})} className="form-input" style={{margin: 0}} />
+                                            </div>
+                                            <div className="form-group" style={{margin: 0}}>
+                                                <label style={{fontSize: '0.75rem'}}>Phone</label>
+                                                <input type="tel" value={editLessonData.phone} onChange={(e) => setEditLessonData({...editLessonData, phone: e.target.value})} className="form-input" style={{margin: 0}} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div style={{borderTop: '1px solid #e2e8f0', paddingTop: '0.75rem', marginTop: '0.25rem'}}>
+                                        <div style={{fontSize: '0.75rem', fontWeight: 600, color: '#475569', marginBottom: '0.5rem'}}>Swimmer 1</div>
+                                        <div style={{display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '0.5rem'}}>
+                                            <div className="form-group" style={{margin: 0}}>
+                                                <label style={{fontSize: '0.75rem'}}>Name</label>
+                                                <input type="text" value={editLessonData.swimmer1Name} onChange={(e) => setEditLessonData({...editLessonData, swimmer1Name: e.target.value})} className="form-input" style={{margin: 0}} />
+                                            </div>
+                                            <div className="form-group" style={{margin: 0}}>
+                                                <label style={{fontSize: '0.75rem'}}>Age</label>
+                                                <input type="number" value={editLessonData.swimmer1Age} onChange={(e) => setEditLessonData({...editLessonData, swimmer1Age: e.target.value})} className="form-input" style={{margin: 0}} min="1" max="99" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    {editLessonData.lessonType === 'group' && (
+                                        <div style={{borderTop: '1px solid #e2e8f0', paddingTop: '0.75rem', marginTop: '0.25rem'}}>
+                                            <div style={{fontSize: '0.75rem', fontWeight: 600, color: '#475569', marginBottom: '0.5rem'}}>Swimmer 2</div>
+                                            <div style={{display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '0.5rem'}}>
+                                                <div className="form-group" style={{margin: 0}}>
+                                                    <label style={{fontSize: '0.75rem'}}>Name</label>
+                                                    <input type="text" value={editLessonData.swimmer2Name} onChange={(e) => setEditLessonData({...editLessonData, swimmer2Name: e.target.value})} className="form-input" style={{margin: 0}} />
+                                                </div>
+                                                <div className="form-group" style={{margin: 0}}>
+                                                    <label style={{fontSize: '0.75rem'}}>Age</label>
+                                                    <input type="number" value={editLessonData.swimmer2Age} onChange={(e) => setEditLessonData({...editLessonData, swimmer2Age: e.target.value})} className="form-input" style={{margin: 0}} min="1" max="99" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                                
+                                <div className="btn-row" style={{marginTop: '1.5rem'}}>
+                                    <button onClick={saveEditedLesson} className="btn btn-success">Save Changes</button>
+                                    <button onClick={() => { setEditingLesson(null); setEditLessonData({}); }} className="btn btn-secondary">Cancel</button>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -1751,8 +2051,10 @@ END:VEVENT
         const [formErrors, setFormErrors] = useState({});
         const [hasAutoSelected, setHasAutoSelected] = useState(false);
         const [lookupEmail, setLookupEmail] = useState('');
-        const [lookupStatus, setLookupStatus] = useState(null); // 'found', 'not-found', null
+        const [lookupStatus, setLookupStatus] = useState(null); // 'found', 'not-found', 'select', null
         const [lookupData, setLookupData] = useState(null);
+        const [lookupSwimmers, setLookupSwimmers] = useState([]); // All swimmers found for this email
+        const [selectedSwimmerIndex, setSelectedSwimmerIndex] = useState(null);
         const [rescheduledLessons, setRescheduledLessons] = useState([]); // Track lessons rescheduled in this session
         const [showSameDayWarning, setShowSameDayWarning] = useState(false);
         const [sameDayExistingTime, setSameDayExistingTime] = useState(null);
@@ -1776,7 +2078,7 @@ END:VEVENT
         const validatePhone = (p) => /^[\d\s\-\+\(\)]{10,}$/.test(p.replace(/\s/g, ''));
         const formatPhoneNumber = (v) => { const n = v.replace(/\D/g, ''); if (n.length <= 3) return n; if (n.length <= 6) return `(${n.slice(0, 3)}) ${n.slice(3)}`; return `(${n.slice(0, 3)}) ${n.slice(3, 6)}-${n.slice(6, 10)}`; };
 
-        // Look up returning user by email
+        // Look up returning user by email - finds all unique swimmers
         const lookupUserByEmail = () => {
             if (!lookupEmail || !validateEmail(lookupEmail)) {
                 setLookupStatus('invalid');
@@ -1784,8 +2086,9 @@ END:VEVENT
             }
             
             const emailLower = lookupEmail.toLowerCase().trim();
-            let foundLesson = null;
-            let mostRecentDate = null;
+            const swimmersMap = {}; // key: swimmer name lowercase, value: swimmer data
+            let parentInfo = { parentName: '', phone: '' };
+            let mostRecentParentDate = null;
             
             // Search all booked lessons for this email
             Object.entries(bookedLessons).forEach(([dateKey, lessons]) => {
@@ -1794,30 +2097,90 @@ END:VEVENT
                 
                 lessons.forEach(lesson => {
                     if (lesson.email && lesson.email.toLowerCase().trim() === emailLower) {
-                        // Keep the most recent booking
-                        if (!mostRecentDate || lessonDate > mostRecentDate) {
-                            mostRecentDate = lessonDate;
-                            foundLesson = lesson;
+                        // Track most recent parent info
+                        if (!mostRecentParentDate || lessonDate > mostRecentParentDate) {
+                            mostRecentParentDate = lessonDate;
+                            parentInfo = {
+                                parentName: lesson.parentName || '',
+                                phone: lesson.phone || ''
+                            };
+                        }
+                        
+                        // Track swimmer 1
+                        if (lesson.swimmer1Name) {
+                            const key = lesson.swimmer1Name.toLowerCase().trim();
+                            if (!swimmersMap[key] || lessonDate > swimmersMap[key].lastSeen) {
+                                swimmersMap[key] = {
+                                    name: lesson.swimmer1Name,
+                                    age: lesson.swimmer1Age || '',
+                                    lastSeen: lessonDate
+                                };
+                            }
+                        }
+                        
+                        // Track swimmer 2 (from group lessons)
+                        if (lesson.swimmer2Name) {
+                            const key = lesson.swimmer2Name.toLowerCase().trim();
+                            if (!swimmersMap[key] || lessonDate > swimmersMap[key].lastSeen) {
+                                swimmersMap[key] = {
+                                    name: lesson.swimmer2Name,
+                                    age: lesson.swimmer2Age || '',
+                                    lastSeen: lessonDate
+                                };
+                            }
                         }
                     }
                 });
             });
             
-            if (foundLesson) {
-                setLookupStatus('found');
-                setLookupData({
-                    parentName: foundLesson.parentName || '',
-                    phone: foundLesson.phone || '',
-                    swimmer1Name: foundLesson.swimmer1Name || '',
-                    swimmer1Age: foundLesson.swimmer1Age || '',
-                    swimmer2Name: foundLesson.swimmer2Name || '',
-                    swimmer2Age: foundLesson.swimmer2Age || '',
-                    lessonType: foundLesson.lessonType || 'private'
-                });
-            } else {
+            const swimmers = Object.values(swimmersMap).sort((a, b) => b.lastSeen - a.lastSeen);
+            
+            if (swimmers.length === 0) {
                 setLookupStatus('not-found');
                 setLookupData(null);
+                setLookupSwimmers([]);
+            } else if (swimmers.length === 1) {
+                // Single swimmer - auto-select
+                setLookupStatus('found');
+                setLookupData({
+                    parentName: parentInfo.parentName,
+                    phone: parentInfo.phone,
+                    swimmer1Name: swimmers[0].name,
+                    swimmer1Age: swimmers[0].age,
+                    swimmer2Name: '',
+                    swimmer2Age: '',
+                    lessonType: 'private'
+                });
+                setLookupSwimmers(swimmers);
+            } else {
+                // Multiple swimmers - let user choose
+                setLookupStatus('select');
+                setLookupData({
+                    parentName: parentInfo.parentName,
+                    phone: parentInfo.phone
+                });
+                setLookupSwimmers(swimmers);
+                setSelectedSwimmerIndex(null);
             }
+        };
+        
+        const selectSwimmerForLookup = (index) => {
+            setSelectedSwimmerIndex(index);
+        };
+        
+        const confirmSwimmerSelection = () => {
+            if (selectedSwimmerIndex === null || !lookupSwimmers[selectedSwimmerIndex]) return;
+            
+            const swimmer = lookupSwimmers[selectedSwimmerIndex];
+            setLookupStatus('found');
+            setLookupData({
+                ...lookupData,
+                swimmer1Name: swimmer.name,
+                swimmer1Age: swimmer.age,
+                swimmer2Name: '',
+                swimmer2Age: '',
+                lessonType: 'private'
+            });
         };
         
         const applyLookupData = () => {
@@ -1842,6 +2205,8 @@ END:VEVENT
             setLookupStatus(null);
             setLookupData(null);
             setLookupEmail('');
+            setLookupSwimmers([]);
+            setSelectedSwimmerIndex(null);
         };
 
         // Update lesson type when price card is clicked
@@ -2333,6 +2698,47 @@ END:VEVENT
                             
                             {lookupStatus === 'not-found' && (
                                 <div style={{marginTop: '0.5rem', fontSize: '0.75rem', color: '#64748b'}}>No previous bookings found for this email. Please fill in your information below.</div>
+                            )}
+                            
+                            {lookupStatus === 'select' && lookupSwimmers.length > 1 && (
+                                <div style={{marginTop: '0.75rem', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: '8px', padding: '0.75rem'}}>
+                                    <div style={{fontSize: '0.875rem', fontWeight: 600, color: '#92400e', marginBottom: '0.5rem'}}>Multiple swimmers found! Select one:</div>
+                                    <div style={{fontSize: '0.8rem', color: '#475569', marginBottom: '0.75rem'}}>
+                                        <strong>{lookupData.parentName}</strong>
+                                    </div>
+                                    <div style={{display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.75rem'}}>
+                                        {lookupSwimmers.map((swimmer, idx) => (
+                                            <label key={idx} style={{
+                                                display: 'flex', 
+                                                alignItems: 'center', 
+                                                gap: '0.5rem', 
+                                                padding: '0.5rem 0.75rem',
+                                                background: selectedSwimmerIndex === idx ? '#dbeafe' : 'white',
+                                                border: `2px solid ${selectedSwimmerIndex === idx ? '#3b82f6' : '#e2e8f0'}`,
+                                                borderRadius: '6px',
+                                                cursor: 'pointer'
+                                            }}>
+                                                <input 
+                                                    type="radio" 
+                                                    name="swimmerSelect" 
+                                                    checked={selectedSwimmerIndex === idx}
+                                                    onChange={() => selectSwimmerForLookup(idx)}
+                                                    style={{cursor: 'pointer'}}
+                                                />
+                                                <span style={{fontWeight: 500}}>{swimmer.name}</span>
+                                                {swimmer.age && <span style={{color: '#64748b'}}>(age {swimmer.age})</span>}
+                                            </label>
+                                        ))}
+                                    </div>
+                                    <div style={{display: 'flex', gap: '0.5rem'}}>
+                                        <button 
+                                            onClick={confirmSwimmerSelection} 
+                                            disabled={selectedSwimmerIndex === null}
+                                            style={{padding: '0.375rem 0.75rem', background: selectedSwimmerIndex !== null ? '#059669' : '#94a3b8', color: 'white', border: 'none', borderRadius: '6px', fontSize: '0.75rem', cursor: selectedSwimmerIndex !== null ? 'pointer' : 'not-allowed', fontFamily: 'inherit'}}
+                                        >Use Selected Swimmer</button>
+                                        <button onClick={clearLookup} style={{padding: '0.375rem 0.75rem', background: '#64748b', color: 'white', border: 'none', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit'}}>Cancel</button>
+                                    </div>
+                                </div>
                             )}
                             
                             {lookupStatus === 'found' && lookupData && (

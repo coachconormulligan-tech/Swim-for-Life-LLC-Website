@@ -188,6 +188,10 @@
     const ALL_LESSON_TIMES = ['9:00 AM', '9:30 AM', '10:00 AM', '10:30 AM', '11:00 AM', '11:30 AM', '12:00 PM', '12:30 PM', '1:00 PM', '1:30 PM', '2:00 PM', '2:30 PM', '3:00 PM', '3:30 PM', '4:00 PM', '4:30 PM', '5:00 PM', '5:30 PM'];
     const DEFAULT_LESSON_TIMES = ['4:00 PM', '3:30 PM', '3:00 PM', '2:30 PM']; // Default order for backward compatibility
 
+    // Calculate age from birthday - shared helper function
+    const calculateAge = (birthday) => { if (!birthday) return ''; const today = new Date(); const birth = new Date(birthday); let age = today.getFullYear() - birth.getFullYear(); const monthDiff = today.getMonth() - birth.getMonth(); if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) age--; return age; };
+    const formatBirthday = (birthday) => { if (!birthday) return ''; const d = new Date(birthday); return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`; };
+
     const App = () => {
         const [isLoading, setIsLoading] = useState(true);
         const [showCalendar, setShowCalendar] = useState(false);
@@ -493,9 +497,9 @@
                 email: lesson.email || '',
                 phone: lesson.phone || '',
                 swimmer1Name: lesson.swimmer1Name || '',
-                swimmer1Age: lesson.swimmer1Age || '',
+                swimmer1Birthday: lesson.swimmer1Birthday || '',
                 swimmer2Name: lesson.swimmer2Name || '',
-                swimmer2Age: lesson.swimmer2Age || '',
+                swimmer2Birthday: lesson.swimmer2Birthday || '',
                 lessonType: lesson.lessonType || 'private',
                 time: lesson.time,
                 newDateKey: lesson.dateKey
@@ -517,9 +521,9 @@
                 email: editLessonData.email,
                 phone: editLessonData.phone,
                 swimmer1Name: editLessonData.swimmer1Name,
-                swimmer1Age: editLessonData.swimmer1Age,
+                swimmer1Birthday: editLessonData.swimmer1Birthday,
                 swimmer2Name: editLessonData.swimmer2Name,
-                swimmer2Age: editLessonData.swimmer2Age,
+                swimmer2Birthday: editLessonData.swimmer2Birthday,
                 lessonType: editLessonData.lessonType,
                 time: newTime,
                 price: editLessonData.lessonType === 'group' ? 70 : 40
@@ -619,9 +623,11 @@
                 'Type': l.lessonType === 'group' ? 'Group' : 'Private',
                 'Parent': l.parentName || '',
                 'Swimmer 1': l.swimmer1Name || '',
-                'Age 1': l.swimmer1Age || '',
+                'Birthday 1': l.swimmer1Birthday ? formatBirthday(l.swimmer1Birthday) : '',
+                'Age 1': l.swimmer1Birthday ? calculateAge(l.swimmer1Birthday) : '',
                 'Swimmer 2': l.swimmer2Name || '',
-                'Age 2': l.swimmer2Age || '',
+                'Birthday 2': l.swimmer2Birthday ? formatBirthday(l.swimmer2Birthday) : '',
+                'Age 2': l.swimmer2Birthday ? calculateAge(l.swimmer2Birthday) : '',
                 'Email': l.email || '',
                 'Phone': l.phone || '',
                 'Price': l.price || 0
@@ -814,7 +820,7 @@ END:VEVENT
                         if (!students[key]) {
                             students[key] = {
                                 name: lesson.swimmer1Name,
-                                ages: new Set(),
+                                birthdays: new Set(),
                                 years: new Set(),
                                 parents: {},
                                 lessons: [],
@@ -826,7 +832,7 @@ END:VEVENT
                                 lastLesson: null
                             };
                         }
-                        if (lesson.swimmer1Age) students[key].ages.add(lesson.swimmer1Age);
+                        if (lesson.swimmer1Birthday) students[key].birthdays.add(lesson.swimmer1Birthday);
                         
                         // Track parent info
                         if (lesson.parentName) {
@@ -875,7 +881,7 @@ END:VEVENT
                         if (!students[key]) {
                             students[key] = {
                                 name: lesson.swimmer2Name,
-                                ages: new Set(),
+                                birthdays: new Set(),
                                 years: new Set(),
                                 parents: {},
                                 lessons: [],
@@ -887,7 +893,7 @@ END:VEVENT
                                 lastLesson: null
                             };
                         }
-                        if (lesson.swimmer2Age) students[key].ages.add(lesson.swimmer2Age);
+                        if (lesson.swimmer2Birthday) students[key].birthdays.add(lesson.swimmer2Birthday);
                         
                         if (lesson.parentName) {
                             const parentKey = lesson.parentName.toLowerCase().trim();
@@ -931,7 +937,7 @@ END:VEVENT
             // Convert to array and sort lessons
             return Object.values(students).map(s => ({
                 ...s,
-                ages: Array.from(s.ages),
+                birthdays: Array.from(s.birthdays),
                 years: Array.from(s.years),
                 parents: Object.values(s.parents),
                 lessons: s.lessons.sort((a, b) => a.date - b.date)
@@ -1007,7 +1013,7 @@ END:VEVENT
                                                 <td>{lesson.time}</td>
                                                 <td>{lesson.isCancelled ? <span className="lesson-type-badge cancelled">Cancelled</span> : <span className={`lesson-type-badge ${lesson.lessonType || 'private'}`}>{lesson.lessonType === 'group' ? 'Group' : 'Private'}</span>}</td>
                                                 <td>{lesson.parentName || '-'}</td>
-                                                <td>{lesson.swimmer1Name ? <>{lesson.swimmer1Name}{lesson.swimmer1Age ? ` (${lesson.swimmer1Age})` : ''}{lesson.swimmer2Name && <><br/>{lesson.swimmer2Name}{lesson.swimmer2Age ? ` (${lesson.swimmer2Age})` : ''}</>}</> : '-'}</td>
+                                                <td>{lesson.swimmer1Name ? <>{lesson.swimmer1Name}{lesson.swimmer1Birthday ? ` (${calculateAge(lesson.swimmer1Birthday)})` : ''}{lesson.swimmer2Name && <><br/>{lesson.swimmer2Name}{lesson.swimmer2Birthday ? ` (${calculateAge(lesson.swimmer2Birthday)})` : ''}</>}</> : '-'}</td>
                                                 <td>{lesson.email || lesson.phone ? <>{lesson.email && <div>{lesson.email}</div>}{lesson.phone && <div>{lesson.phone}</div>}</> : '-'}</td>
                                                 <td>${lesson.price || 0}</td>
                                                 <td>{!lesson.isCancelled ? (
@@ -1387,8 +1393,8 @@ END:VEVENT
                                                                         </div>
                                                                     </div>
                                                                     <div style={{textAlign: 'right'}}>
-                                                                        {student.ages.length > 0 && (
-                                                                            <div style={{fontSize: '0.75rem', color: '#64748b'}}>Age: {student.ages.join(', ')}</div>
+                                                                        {student.birthdays.length > 0 && (
+                                                                            <div style={{fontSize: '0.75rem', color: '#64748b'}}>Age: {student.birthdays.map(b => calculateAge(b)).join(', ')}</div>
                                                                         )}
                                                                     </div>
                                                                 </div>
@@ -1411,8 +1417,8 @@ END:VEVENT
                                                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem'}}>
                                                     <div>
                                                         <h3 style={{margin: 0, color: '#1e40af'}}>{selectedStudent.name}</h3>
-                                                        {selectedStudent.ages.length > 0 && (
-                                                            <p style={{margin: '0.25rem 0 0 0', color: '#64748b', fontSize: '0.875rem'}}>Age: {selectedStudent.ages.join(', ')}</p>
+                                                        {selectedStudent.birthdays.length > 0 && (
+                                                            <p style={{margin: '0.25rem 0 0 0', color: '#64748b', fontSize: '0.875rem'}}>Age: {selectedStudent.birthdays.map(b => calculateAge(b)).join(', ')}</p>
                                                         )}
                                                     </div>
                                                     <button 
@@ -1691,12 +1697,13 @@ END:VEVENT
                                                 <input type="text" value={editLessonData.swimmer1Name} onChange={(e) => setEditLessonData({...editLessonData, swimmer1Name: e.target.value})} className="form-input" style={{margin: 0}} />
                                             </div>
                                             <div className="form-group" style={{margin: 0}}>
-                                                <label style={{fontSize: '0.75rem'}}>Age</label>
-                                                <input type="number" value={editLessonData.swimmer1Age} onChange={(e) => setEditLessonData({...editLessonData, swimmer1Age: e.target.value})} className="form-input" style={{margin: 0}} min="1" max="99" />
+                                                <label style={{fontSize: '0.75rem'}}>Birthday</label>
+                                                <input type="date" value={editLessonData.swimmer1Birthday} onChange={(e) => setEditLessonData({...editLessonData, swimmer1Birthday: e.target.value})} className="form-input" style={{margin: 0}} />
+                                                {editLessonData.swimmer1Birthday && <div style={{fontSize: '0.7rem', color: '#64748b'}}>Age: {calculateAge(editLessonData.swimmer1Birthday)}</div>}
                                             </div>
                                         </div>
                                     </div>
-                                    
+
                                     {editLessonData.lessonType === 'group' && (
                                         <div style={{borderTop: '1px solid #e2e8f0', paddingTop: '0.75rem', marginTop: '0.25rem'}}>
                                             <div style={{fontSize: '0.75rem', fontWeight: 600, color: '#475569', marginBottom: '0.5rem'}}>Swimmer 2</div>
@@ -1706,8 +1713,9 @@ END:VEVENT
                                                     <input type="text" value={editLessonData.swimmer2Name} onChange={(e) => setEditLessonData({...editLessonData, swimmer2Name: e.target.value})} className="form-input" style={{margin: 0}} />
                                                 </div>
                                                 <div className="form-group" style={{margin: 0}}>
-                                                    <label style={{fontSize: '0.75rem'}}>Age</label>
-                                                    <input type="number" value={editLessonData.swimmer2Age} onChange={(e) => setEditLessonData({...editLessonData, swimmer2Age: e.target.value})} className="form-input" style={{margin: 0}} min="1" max="99" />
+                                                    <label style={{fontSize: '0.75rem'}}>Birthday</label>
+                                                    <input type="date" value={editLessonData.swimmer2Birthday} onChange={(e) => setEditLessonData({...editLessonData, swimmer2Birthday: e.target.value})} className="form-input" style={{margin: 0}} />
+                                                    {editLessonData.swimmer2Birthday && <div style={{fontSize: '0.7rem', color: '#64748b'}}>Age: {calculateAge(editLessonData.swimmer2Birthday)}</div>}
                                                 </div>
                                             </div>
                                         </div>
@@ -2047,7 +2055,7 @@ END:VEVENT
         const [showBookingForm, setShowBookingForm] = useState(false);
         const [bookingType, setBookingType] = useState('weekly');
         const [showConfirmModal, setShowConfirmModal] = useState(false);
-        const [formData, setFormData] = useState({ parentName: '', swimmer1Name: '', swimmer1Age: '', swimmer2Name: '', swimmer2Age: '', email: '', phone: '', lessonType: 'private' });
+        const [formData, setFormData] = useState({ parentName: '', swimmer1Name: '', swimmer1Birthday: '', swimmer2Name: '', swimmer2Birthday: '', email: '', phone: '', lessonType: 'private' });
         const [formErrors, setFormErrors] = useState({});
         const [hasAutoSelected, setHasAutoSelected] = useState(false);
         const [lookupEmail, setLookupEmail] = useState('');
@@ -2112,19 +2120,19 @@ END:VEVENT
                             if (!swimmersMap[key] || lessonDate > swimmersMap[key].lastSeen) {
                                 swimmersMap[key] = {
                                     name: lesson.swimmer1Name,
-                                    age: lesson.swimmer1Age || '',
+                                    birthday: lesson.swimmer1Birthday || '',
                                     lastSeen: lessonDate
                                 };
                             }
                         }
-                        
+
                         // Track swimmer 2 (from group lessons)
                         if (lesson.swimmer2Name) {
                             const key = lesson.swimmer2Name.toLowerCase().trim();
                             if (!swimmersMap[key] || lessonDate > swimmersMap[key].lastSeen) {
                                 swimmersMap[key] = {
                                     name: lesson.swimmer2Name,
-                                    age: lesson.swimmer2Age || '',
+                                    birthday: lesson.swimmer2Birthday || '',
                                     lastSeen: lessonDate
                                 };
                             }
@@ -2146,9 +2154,9 @@ END:VEVENT
                     parentName: parentInfo.parentName,
                     phone: parentInfo.phone,
                     swimmer1Name: swimmers[0].name,
-                    swimmer1Age: swimmers[0].age,
+                    swimmer1Birthday: swimmers[0].birthday,
                     swimmer2Name: '',
-                    swimmer2Age: '',
+                    swimmer2Birthday: '',
                     lessonType: 'private'
                 });
                 setLookupSwimmers(swimmers);
@@ -2188,9 +2196,9 @@ END:VEVENT
             setLookupData({
                 ...lookupData,
                 swimmer1Name: swimmer1.name,
-                swimmer1Age: swimmer1.age,
+                swimmer1Birthday: swimmer1.birthday,
                 swimmer2Name: swimmer2 ? swimmer2.name : '',
-                swimmer2Age: swimmer2 ? swimmer2.age : '',
+                swimmer2Birthday: swimmer2 ? swimmer2.birthday : '',
                 lessonType: swimmer2 ? 'group' : 'private'
             });
         };
@@ -2203,9 +2211,9 @@ END:VEVENT
                     parentName: lookupData.parentName,
                     phone: lookupData.phone,
                     swimmer1Name: lookupData.swimmer1Name,
-                    swimmer1Age: lookupData.swimmer1Age,
+                    swimmer1Birthday: lookupData.swimmer1Birthday,
                     swimmer2Name: lookupData.swimmer2Name,
-                    swimmer2Age: lookupData.swimmer2Age,
+                    swimmer2Birthday: lookupData.swimmer2Birthday,
                     lessonType: lookupData.lessonType
                 });
                 setLookupStatus(null);
@@ -2302,7 +2310,7 @@ END:VEVENT
             if (availTime && !showBookingForm && !reschedulingConflict) setShowBookingForm(true);
         };
 
-        const resetForm = () => { setFormData({ parentName: '', swimmer1Name: '', swimmer1Age: '', swimmer2Name: '', swimmer2Age: '', email: '', phone: '', lessonType: preselectedType || 'private' }); setFormErrors({}); setShowBookingForm(false); setBookingType('weekly'); };
+        const resetForm = () => { setFormData({ parentName: '', swimmer1Name: '', swimmer1Birthday: '', swimmer2Name: '', swimmer2Birthday: '', email: '', phone: '', lessonType: preselectedType || 'private' }); setFormErrors({}); setShowBookingForm(false); setBookingType('weekly'); };
 
         const bookLesson = (year, month, day, time, lessonInfo) => {
             const dateKey = `${year}-${month}-${day}`;
@@ -2363,9 +2371,9 @@ END:VEVENT
 
         // Send booking confirmation emails
         const sendBookingEmails = (lessonInfo, bookedDates) => {
-            const swimmerInfo = lessonInfo.lessonType === 'group' 
-                ? `${lessonInfo.swimmer1Name} (Age: ${lessonInfo.swimmer1Age})\n${lessonInfo.swimmer2Name} (Age: ${lessonInfo.swimmer2Age})`
-                : `${lessonInfo.swimmer1Name} (Age: ${lessonInfo.swimmer1Age})`;
+            const swimmerInfo = lessonInfo.lessonType === 'group'
+                ? `${lessonInfo.swimmer1Name} (Age: ${calculateAge(lessonInfo.swimmer1Birthday)})\n${lessonInfo.swimmer2Name} (Age: ${calculateAge(lessonInfo.swimmer2Birthday)})`
+                : `${lessonInfo.swimmer1Name} (Age: ${calculateAge(lessonInfo.swimmer1Birthday)})`;
             
             const lessonDatesFormatted = bookedDates.map((d, i) => {
                 const date = new Date(d.year, d.month, d.day);
@@ -2472,8 +2480,8 @@ END:VEVENT
 
         const confirmBooking = () => {
             setShowConfirmModal(false);
-            const lessonInfo = { time: selectedTime, parentName: formData.parentName, swimmer1Name: formData.swimmer1Name, swimmer1Age: formData.swimmer1Age, email: formData.email, phone: formData.phone, lessonType: formData.lessonType, price: formData.lessonType === 'private' ? 40 : 70 };
-            if (formData.lessonType === 'group') { lessonInfo.swimmer2Name = formData.swimmer2Name; lessonInfo.swimmer2Age = formData.swimmer2Age; }
+            const lessonInfo = { time: selectedTime, parentName: formData.parentName, swimmer1Name: formData.swimmer1Name, swimmer1Birthday: formData.swimmer1Birthday, email: formData.email, phone: formData.phone, lessonType: formData.lessonType, price: formData.lessonType === 'private' ? 40 : 70 };
+            if (formData.lessonType === 'group') { lessonInfo.swimmer2Name = formData.swimmer2Name; lessonInfo.swimmer2Birthday = formData.swimmer2Birthday; }
             
             if (bookingType === 'single') {
                 const singleDate = [{ year: selectedDate.year, month: selectedDate.month, day: selectedDate.day, time: selectedTime }];
@@ -2745,7 +2753,7 @@ END:VEVENT
                                                     style={{cursor: isDisabled ? 'not-allowed' : 'pointer'}}
                                                 />
                                                 <span style={{fontWeight: 500}}>{swimmer.name}</span>
-                                                {swimmer.age && <span style={{color: '#64748b'}}>(age {swimmer.age})</span>}
+                                                {swimmer.birthday && <span style={{color: '#64748b'}}>(age {calculateAge(swimmer.birthday)})</span>}
                                             </label>
                                             );
                                         })}
@@ -2780,9 +2788,9 @@ END:VEVENT
                         <div className="form-group"><label>Parent Name *</label><input type="text" value={formData.parentName} onChange={(e) => setFormData({...formData, parentName: e.target.value})} className="form-input" placeholder="Enter parent name" /></div>
                         <div className="form-group"><label>Email *</label><input type="email" value={formData.email} onChange={(e) => { setFormData({...formData, email: e.target.value}); if (formErrors.email && validateEmail(e.target.value)) setFormErrors({...formErrors, email: null}); }} className={`form-input ${formErrors.email ? 'error' : ''}`} placeholder="example@email.com" />{formErrors.email && <div className="error-message">{formErrors.email}</div>}</div>
                         <div className="form-group"><label>Phone Number *</label><input type="tel" value={formData.phone} onChange={(e) => { const f = formatPhoneNumber(e.target.value); setFormData({...formData, phone: f}); if (formErrors.phone && validatePhone(f)) setFormErrors({...formErrors, phone: null}); }} className={`form-input ${formErrors.phone ? 'error' : ''}`} placeholder="(555) 123-4567" />{formErrors.phone && <div className="error-message">{formErrors.phone}</div>}</div>
-                        <div className="section-divider"><div className="section-title">Swimmer 1 Information</div><div className="form-group"><label>Swimmer Name *</label><input type="text" value={formData.swimmer1Name} onChange={(e) => setFormData({...formData, swimmer1Name: e.target.value})} className="form-input" placeholder="Enter swimmer name" /></div><div className="form-group"><label>Swimmer Age *</label><input type="number" value={formData.swimmer1Age} onChange={(e) => setFormData({...formData, swimmer1Age: e.target.value})} className="form-input" placeholder="Enter swimmer age" min="1" max="99" /></div></div>
-                        {formData.lessonType === 'group' && <div className="section-divider"><div className="section-title">Swimmer 2 Information</div><div className="form-group"><label>Swimmer Name *</label><input type="text" value={formData.swimmer2Name} onChange={(e) => setFormData({...formData, swimmer2Name: e.target.value})} className="form-input" placeholder="Enter swimmer name" /></div><div className="form-group"><label>Swimmer Age *</label><input type="number" value={formData.swimmer2Age} onChange={(e) => setFormData({...formData, swimmer2Age: e.target.value})} className="form-input" placeholder="Enter swimmer age" min="1" max="99" /></div></div>}
-                        <div className="btn-row"><button onClick={handleBookClick} disabled={!formData.parentName || !formData.email || !formData.phone || !formData.swimmer1Name || !formData.swimmer1Age || (formData.lessonType === 'group' && (!formData.swimmer2Name || !formData.swimmer2Age))} className="btn btn-success">Book</button><button onClick={() => { resetForm(); setSelectedTime(''); setSelectedDate(null); clearLookup(); }} className="btn btn-secondary">Cancel</button></div>
+                        <div className="section-divider"><div className="section-title">Swimmer 1 Information</div><div className="form-group"><label>Swimmer Name *</label><input type="text" value={formData.swimmer1Name} onChange={(e) => setFormData({...formData, swimmer1Name: e.target.value})} className="form-input" placeholder="Enter swimmer name" /></div><div className="form-group"><label>Swimmer Birthday *</label><input type="date" value={formData.swimmer1Birthday} onChange={(e) => setFormData({...formData, swimmer1Birthday: e.target.value})} className="form-input" />{formData.swimmer1Birthday && <div style={{fontSize: '0.8rem', color: '#64748b', marginTop: '0.25rem'}}>Age: {calculateAge(formData.swimmer1Birthday)}</div>}</div></div>
+                        {formData.lessonType === 'group' && <div className="section-divider"><div className="section-title">Swimmer 2 Information</div><div className="form-group"><label>Swimmer Name *</label><input type="text" value={formData.swimmer2Name} onChange={(e) => setFormData({...formData, swimmer2Name: e.target.value})} className="form-input" placeholder="Enter swimmer name" /></div><div className="form-group"><label>Swimmer Birthday *</label><input type="date" value={formData.swimmer2Birthday} onChange={(e) => setFormData({...formData, swimmer2Birthday: e.target.value})} className="form-input" />{formData.swimmer2Birthday && <div style={{fontSize: '0.8rem', color: '#64748b', marginTop: '0.25rem'}}>Age: {calculateAge(formData.swimmer2Birthday)}</div>}</div></div>}
+                        <div className="btn-row"><button onClick={handleBookClick} disabled={!formData.parentName || !formData.email || !formData.phone || !formData.swimmer1Name || !formData.swimmer1Birthday || (formData.lessonType === 'group' && (!formData.swimmer2Name || !formData.swimmer2Birthday))} className="btn btn-success">Book</button><button onClick={() => { resetForm(); setSelectedTime(''); setSelectedDate(null); clearLookup(); }} className="btn btn-secondary">Cancel</button></div>
                     </div>
                     );
                 })()}
@@ -2796,7 +2804,7 @@ END:VEVENT
                             <div className="confirm-row"><span className="confirm-label">Time</span><span className="confirm-value">{selectedTime}</span></div>
                             <div className="confirm-row"><span className="confirm-label">Lesson Type</span><span className="confirm-value">{formData.lessonType === 'private' ? 'Private ($40)' : 'Group ($70)'}</span></div>
                             <div className="confirm-row"><span className="confirm-label">Parent</span><span className="confirm-value">{formData.parentName}</span></div>
-                            <div className="confirm-row"><span className="confirm-label">Swimmer(s)</span><span className="confirm-value">{formData.swimmer1Name} ({formData.swimmer1Age}){formData.swimmer2Name && <><br/>{formData.swimmer2Name} ({formData.swimmer2Age})</>}</span></div>
+                            <div className="confirm-row"><span className="confirm-label">Swimmer(s)</span><span className="confirm-value">{formData.swimmer1Name} (Age: {calculateAge(formData.swimmer1Birthday)}){formData.swimmer2Name && <><br/>{formData.swimmer2Name} (Age: {calculateAge(formData.swimmer2Birthday)})</>}</span></div>
                             <div className="confirm-row"><span className="confirm-label">Contact</span><span className="confirm-value">{formData.email}<br/>{formData.phone}</span></div>
                         </div>
                         <div className="btn-row"><button onClick={confirmBooking} className="btn btn-success">Confirm Booking</button><button onClick={() => setShowConfirmModal(false)} className="btn btn-secondary">Go Back</button></div>

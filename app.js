@@ -1,3 +1,26 @@
+//==============================================================================
+// SWIM LESSON BOOKING APPLICATION
+// Organized for easy navigation and maintenance
+//
+// QUICK NAVIGATION:
+// - Lines 1-35: Firebase & EmailJS initialization
+// - Lines 36-50: Constants & Icon components  
+// - Lines 51-65: Helper functions
+// - Lines 66-1607: Main App component
+//   - Lines 66-150: State declarations
+//   - Lines 151-350: Firebase data loading/saving
+//   - Lines 351-600: Booking & date logic
+//   - Lines 601-1000: Event handlers
+//   - Lines 1001-1607: Main render & UI
+// - Lines 1608-1888: AdminSchedulingPanel component
+// - Lines 1889-2729: SwimLessonCalendar component
+//==============================================================================
+
+
+//==============================================================================
+// SECTION 1: FIREBASE & EMAILJS INITIALIZATION
+// Purpose: Initialize Firebase database and EmailJS for confirmations
+//==============================================================================
     // Initialize Firebase - wait for scripts to load
     var db = null;
     var firebaseReady = false;
@@ -21,6 +44,11 @@
     // Initialize EmailJS
     emailjs.init('m13Tjtg2maUWTyjPA');
 </script>
+
+//==============================================================================
+// SECTION 2: REACT SETUP, CONSTANTS & ICON COMPONENTS
+// Purpose: Import React hooks, define constants, create icon components
+//==============================================================================
 <script type="text/babel">
 const { useState, useEffect, useCallback } = React;
 const ChevronLeft = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6"/></svg>;
@@ -31,11 +59,34 @@ const MAX_LESSONS = 4;
 const ALL_LESSON_TIMES = ['9:00 AM', '9:30 AM', '10:00 AM', '10:30 AM', '11:00 AM', '11:30 AM', '12:00 PM', '12:30 PM', '1:00 PM', '1:30 PM', '2:00 PM', '2:30 PM', '3:00 PM', '3:30 PM', '4:00 PM', '4:30 PM', '5:00 PM', '5:30 PM'];
 const DEFAULT_LESSON_TIMES = ['4:00 PM', '3:30 PM', '3:00 PM', '2:30 PM']; // Default order for backward compatibility
 
+
+//==============================================================================
+// SECTION 3: HELPER FUNCTIONS
+// Purpose: Reusable utility functions (age calculation, date formatting, etc.)
+//==============================================================================
 // Calculate age from birthday - shared helper function
 const calculateAge = (birthday) => { if (!birthday) return ''; const today = new Date(); const birth = new Date(birthday); let age = today.getFullYear() - birth.getFullYear(); const monthDiff = today.getMonth() - birth.getMonth(); if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) age--; return age; };
 const formatBirthday = (birthday) => { if (!birthday) return ''; const d = new Date(birthday); return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`; };
 
+
+//==============================================================================
+// SECTION 4: MAIN APP COMPONENT
+// Purpose: Root component managing all state and routing between views
+//
+// Sub-sections:
+//   4.1: State declarations (lines ~40-76)
+//   4.2: Firebase data functions (lines ~77-350)
+//   4.3: Date & blocking logic (lines ~351-500)
+//   4.4: Admin functions (lines ~501-800)
+//   4.5: Booking handlers (lines ~801-1200)
+//   4.6: Excel export (lines ~1201-1400)
+//   4.7: Main render & UI (lines ~1401-1607)
+//==============================================================================
 const App = () => {
+    // -------------------------------------------------------------------------
+    // 4.1: STATE DECLARATIONS
+    // All React state variables for the application
+    // -------------------------------------------------------------------------
     const [isLoading, setIsLoading] = useState(true);
     const [showCalendar, setShowCalendar] = useState(false);
     const [showAdmin, setShowAdmin] = useState(false);
@@ -88,6 +139,11 @@ const App = () => {
         return year === today.getFullYear() && month === today.getMonth() && day === today.getDate();
     };
 
+    // -------------------------------------------------------------------------
+    // 4.2: FIREBASE DATA LOADING & SAVING
+    // Functions to load and save data to Firebase database
+    // -------------------------------------------------------------------------
+    
     // Load data from Firebase on mount
     useEffect(() => {
         const loadData = async () => {
@@ -186,6 +242,11 @@ const App = () => {
         setTimeout(() => document.getElementById('calendar')?.scrollIntoView({ behavior: 'smooth' }), 100);
     };
 
+    // -------------------------------------------------------------------------
+    // 4.3: DATE & BLOCKING LOGIC
+    // Functions to check if dates are blocked, get available dates, etc.
+    // -------------------------------------------------------------------------
+    
     const isDateBlocked = (year, month, day) => {
         const date = new Date(year, month, day);
         const dateKey = `${year}-${month}-${day}`;
@@ -220,6 +281,11 @@ const App = () => {
 
     const getActiveLessons = (dateKey) => (bookedLessons[dateKey] || []).filter(l => !cancelledLessons.has(`${dateKey}-${l.time}`));
 
+    // -------------------------------------------------------------------------
+    // 4.4: ADMIN FUNCTIONS
+    // Handler functions for admin operations (blocking, canceling, editing)
+    // -------------------------------------------------------------------------
+    
     const handleStartDateChange = (value) => {
         let newEnd = dateWindowEnd;
         if (value) {
@@ -458,6 +524,11 @@ const App = () => {
 
     const getTotalRevenue = () => getAllLessons().filter(l => !l.isCancelled).reduce((sum, l) => sum + (l.price || 0), 0);
 
+    // -------------------------------------------------------------------------
+    // 4.5: EXCEL EXPORT FUNCTIONALITY
+    // Generate and download Excel reports of booked lessons
+    // -------------------------------------------------------------------------
+    
     const exportToExcel = () => {
         const lessons = getAllLessons().filter(l => !l.isCancelled);
         const data = lessons.map(l => ({
@@ -793,6 +864,11 @@ END:VEVENT
         saveStudentNotes(newNotes);
     };
 
+    // -------------------------------------------------------------------------
+    // 4.6: MAIN RENDER LOGIC
+    // Component rendering - loading state, admin panel, or public view
+    // -------------------------------------------------------------------------
+    
     if (isLoading) {
         return (
             <div style={{minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #0f172a 0%, #1e40af 50%, #3b82f6 100%)'}}>
@@ -1605,6 +1681,11 @@ END:VEVENT
     );
 };
 
+
+//==============================================================================
+// SECTION 5: ADMIN SCHEDULING PANEL COMPONENT
+// Purpose: Admin interface for blocking dates, setting time windows, etc.
+//==============================================================================
 const AdminSchedulingPanel = ({ blockedDates, blockedWeekdays, dateWindowStart, dateWindowEnd, handleStartDateChange, handleEndDateChange, setDateWindowStart, setDateWindowEnd, toggleBlockedDate, toggleBlockedWeekday, isDateBlocked, bookedLessons, cancelledLessons, firstAvailableDate, saveSettings, weekdayTimeSettings, setWeekdayTimeSettings }) => {
     const [currentDate, setCurrentDate] = useState(new Date(firstAvailableDate.getFullYear(), firstAvailableDate.getMonth(), 1));
     const [editingWeekday, setEditingWeekday] = useState(null);
@@ -1886,7 +1967,23 @@ const AdminSchedulingPanel = ({ blockedDates, blockedWeekdays, dateWindowStart, 
     );
 };
 
+
+//==============================================================================
+// SECTION 6: SWIM LESSON CALENDAR COMPONENT
+// Purpose: Calendar display, date selection, and booking form
+//
+// Sub-sections:
+//   6.1: State & initialization (lines ~1890-1950)
+//   6.2: Calendar navigation (lines ~1951-2050)
+//   6.3: Booking logic & conflict detection (lines ~2051-2400)
+//   6.4: Email confirmation (lines ~2401-2500)
+//   6.5: Calendar render & UI (lines ~2501-2729)
+//==============================================================================
 const SwimLessonCalendar = ({ preselectedType, autoBookWeekly, bookedLessons, setBookedLessons, saveLessons, cancelledLessons, isDateBlocked, getFirstAvailableDate, dateWindowEnd, lessonTypeUpdate, weekdayTimeSettings }) => {
+    // -------------------------------------------------------------------------
+    // 6.1: STATE DECLARATIONS
+    // All state for calendar navigation, booking form, and conflict handling
+    // -------------------------------------------------------------------------
     const [currentDate, setCurrentDate] = useState(() => { const f = getFirstAvailableDate(); return new Date(f.getFullYear(), f.getMonth(), 1); });
     const [selectedDate, setSelectedDate] = useState(null);
     const [selectedTime, setSelectedTime] = useState('');
@@ -2079,6 +2176,11 @@ const SwimLessonCalendar = ({ preselectedType, autoBookWeekly, bookedLessons, se
         }
     }, [preselectedType, lessonTypeUpdate]);
 
+    // -------------------------------------------------------------------------
+    // 6.2: BOOKING LOGIC & AVAILABILITY
+    // Functions to check available times, handle bookings, detect conflicts
+    // -------------------------------------------------------------------------
+    
     const getAvailableTimes = (selDate) => {
         if (!selDate) return [];
         const dateKey = `${selDate.year}-${selDate.month}-${selDate.day}`;
@@ -2457,6 +2559,11 @@ END:VEVENT
         }
     };
 
+    // -------------------------------------------------------------------------
+    // 6.3: CALENDAR RENDERING
+    // Generate calendar display with day cells, availability indicators
+    // -------------------------------------------------------------------------
+    
     const { year, month, firstDay, daysInMonth } = getMonthData(currentDate);
     const monthName = currentDate.toLocaleString('default', { month: 'long' });
     const weeklyCount = selectedDate && selectedTime ? countWeeklyLessons(selectedDate, selectedTime) : 0;

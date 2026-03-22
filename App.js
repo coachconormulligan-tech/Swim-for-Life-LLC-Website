@@ -444,6 +444,42 @@
             XLSX.writeFile(wb, `swim-lessons-${new Date().toISOString().split('T')[0]}.xlsx`);
         };
 
+        const exportCompletedToExcel = () => {
+            const today = new Date(); today.setHours(0, 0, 0, 0);
+            const completedLessons = getAllLessonsForRevenue().filter(l => !l.isCancelled && l.date < today);
+            if (completedLessons.length === 0) { alert('No completed lessons to export.'); return; }
+            const rows = [];
+            completedLessons.forEach(l => {
+                const addRow = (swimmerName) => {
+                    rows.push({
+                        'Date': l.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }),
+                        'Time': l.time,
+                        'Type': l.lessonType === 'group' ? 'Group' : 'Private',
+                        'Swimmer': swimmerName,
+                        'Parent': l.parentName || '',
+                        'Price': l.price || 0,
+                        'Date of Payment': ''
+                    });
+                };
+                if (l.swimmer1Name) addRow(l.swimmer1Name);
+                if (l.swimmer2Name) addRow(l.swimmer2Name);
+            });
+            const ws = XLSX.utils.json_to_sheet(rows);
+            // Set column widths
+            ws['!cols'] = [
+                { wch: 36 }, // Date
+                { wch: 10 }, // Time
+                { wch: 8 },  // Type
+                { wch: 22 }, // Swimmer
+                { wch: 22 }, // Parent
+                { wch: 8 },  // Price
+                { wch: 18 }  // Date of Payment
+            ];
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Completed Lessons');
+            XLSX.writeFile(wb, `completed-lessons-${new Date().toISOString().split('T')[0]}.xlsx`);
+        };
+
         const printSchedule = () => {
             const lessons = getAllLessons().filter(l => !l.isCancelled);
             const printContent = `
@@ -795,7 +831,11 @@ END:VEVENT
                                     <div className="stat-card"><h4>Upcoming Lessons</h4><div className="stat-value">{allLessons.filter(l => !l.isCancelled).length}</div></div>
                                     <div className="stat-card"><h4>Private Lessons</h4><div className="stat-value">{allLessons.filter(l => !l.isCancelled && l.lessonType === 'private').length}</div></div>
                                     <div className="stat-card"><h4>Group Lessons</h4><div className="stat-value">{allLessons.filter(l => !l.isCancelled && l.lessonType === 'group').length}</div></div>
-                                    <div className="stat-card"><h4>Total Revenue</h4><div className="stat-value">${getTotalRevenue()}</div></div>
+                                    <div className="stat-card" style={{background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)', border: '1px solid #a7f3d0'}}><h4 style={{color: '#047857'}}>Earned So Far</h4><div className="stat-value" style={{color: '#059669'}}>${(() => {
+                                        const today = new Date(); today.setHours(0, 0, 0, 0);
+                                        return getAllLessonsForRevenue().filter(l => !l.isCancelled && l.date < today).reduce((sum, l) => sum + (l.price || 0), 0);
+                                    })()}</div></div>
+                                    <div className="stat-card"><h4>Still to Earn</h4><div className="stat-value">${getTotalRevenue()}</div></div>
                                 </div>
                                 <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem'}}>
                                     <div style={{display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', background: 'white', borderRadius: '10px'}}>
@@ -806,6 +846,7 @@ END:VEVENT
                                     </div>
                                     <div style={{display: 'flex', gap: '0.5rem', flexWrap: 'wrap'}}>
                                         <button onClick={exportToExcel} style={{padding: '0.5rem 1rem', background: '#059669', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 500, cursor: 'pointer', fontSize: '0.875rem', fontFamily: 'inherit'}}>Export to Excel</button>
+                                        <button onClick={exportCompletedToExcel} style={{padding: '0.5rem 1rem', background: '#7c3aed', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 500, cursor: 'pointer', fontSize: '0.875rem', fontFamily: 'inherit'}}>Export Completed Lessons</button>
                                         <button onClick={exportToCalendar} style={{padding: '0.5rem 1rem', background: '#0ea5e9', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 500, cursor: 'pointer', fontSize: '0.875rem', fontFamily: 'inherit'}}>Export to Calendar</button>
                                         <button onClick={printSchedule} style={{padding: '0.5rem 1rem', background: '#6366f1', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 500, cursor: 'pointer', fontSize: '0.875rem', fontFamily: 'inherit'}}>Print Schedule</button>
                                     </div>

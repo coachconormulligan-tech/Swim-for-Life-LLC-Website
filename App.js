@@ -182,6 +182,27 @@
             return new Date();
         };
 
+        const getClosestAvailableTo = (targetDate) => {
+            let checkDate = new Date(targetDate);
+            checkDate.setDate(checkDate.getDate() + 1);
+            for (let i = 0; i < 365; i++) {
+                const year = checkDate.getFullYear(), month = checkDate.getMonth(), day = checkDate.getDate();
+                const dateKey = `${year}-${month}-${day}`;
+                const dayOfWeek = checkDate.getDay();
+                const dayTimes = getLessonTimesForDay(dayOfWeek);
+                if (!isDateBlocked(year, month, day) && dayTimes.length > 0) {
+                    const booked = (bookedLessons[dateKey] || []).filter(l => !cancelledLessons.has(`${dateKey}-${l.time}`));
+                    const bookedTimes = booked.map(l => l.time);
+                    let availTime = null;
+                    if (!bookedTimes.includes(dayTimes[0])) availTime = dayTimes[0];
+                    else { for (let j = 1; j < dayTimes.length; j++) { if (bookedTimes.includes(dayTimes[j-1]) && !bookedTimes.includes(dayTimes[j])) { availTime = dayTimes[j]; break; } } }
+                    if (availTime) return { year, month, day, time: availTime };
+                }
+                checkDate.setDate(checkDate.getDate() + 1);
+            }
+            return null;
+        };
+
         const getActiveLessons = (dateKey) => (bookedLessons[dateKey] || []).filter(l => !cancelledLessons.has(`${dateKey}-${l.time}`));
 
         const handleStartDateChange = (value) => {
@@ -608,7 +629,8 @@ END:VEVENT
         };
 
         const getRevenueByWeek = () => {
-            const lessons = getAllLessonsForRevenue().filter(l => !l.isCancelled);
+            const today = new Date(); today.setHours(0, 0, 0, 0);
+            const lessons = getAllLessonsForRevenue().filter(l => !l.isCancelled && l.date < today);
             const weeklyData = {};
             
             lessons.forEach(l => {
@@ -629,7 +651,8 @@ END:VEVENT
         };
 
         const getRevenueByMonth = () => {
-            const lessons = getAllLessonsForRevenue().filter(l => !l.isCancelled);
+            const today = new Date(); today.setHours(0, 0, 0, 0);
+            const lessons = getAllLessonsForRevenue().filter(l => !l.isCancelled && l.date < today);
             const monthlyData = {};
             
             lessons.forEach(l => {
@@ -962,20 +985,17 @@ END:VEVENT
                                         return getAllLessonsForRevenue().filter(l => !l.isCancelled && l.date >= today).reduce((sum, l) => sum + (l.price || 0), 0);
                                     })()}</div></div>
                                     <div className="stat-card"><h4>Total Lessons</h4><div className="stat-value">{getAllLessonsForRevenue().filter(l => !l.isCancelled).length}</div></div>
-                                    <div className="stat-card"><h4>This Week</h4><div className="stat-value">${(() => {
-                                        const today = new Date();
+                                    <div className="stat-card"><h4>This Week (Earned)</h4><div className="stat-value">${(() => {
+                                        const today = new Date(); today.setHours(0, 0, 0, 0);
                                         const weekStart = new Date(today);
                                         weekStart.setDate(today.getDate() - today.getDay());
                                         weekStart.setHours(0, 0, 0, 0);
-                                        const weekEnd = new Date(weekStart);
-                                        weekEnd.setDate(weekStart.getDate() + 7);
-                                        return getAllLessonsForRevenue().filter(l => !l.isCancelled && l.date >= weekStart && l.date < weekEnd).reduce((sum, l) => sum + (l.price || 0), 0);
+                                        return getAllLessonsForRevenue().filter(l => !l.isCancelled && l.date >= weekStart && l.date < today).reduce((sum, l) => sum + (l.price || 0), 0);
                                     })()}</div></div>
-                                    <div className="stat-card"><h4>This Month</h4><div className="stat-value">${(() => {
-                                        const today = new Date();
+                                    <div className="stat-card"><h4>This Month (Earned)</h4><div className="stat-value">${(() => {
+                                        const today = new Date(); today.setHours(0, 0, 0, 0);
                                         const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-                                        const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-                                        return getAllLessonsForRevenue().filter(l => !l.isCancelled && l.date >= monthStart && l.date < monthEnd).reduce((sum, l) => sum + (l.price || 0), 0);
+                                        return getAllLessonsForRevenue().filter(l => !l.isCancelled && l.date >= monthStart && l.date < today).reduce((sum, l) => sum + (l.price || 0), 0);
                                     })()}</div></div>
                                 </div>
                                 
@@ -1605,7 +1625,7 @@ END:VEVENT
                 <section className="hero"><div className="hero-content"><h1>Swim for Life</h1><p className="tagline">Private Swim Lessons</p><button className="hero-button" onClick={() => handleBookingClick(null)}>Book a private lesson</button><button className="hero-button hero-button-secondary" onClick={() => { setShowAbout(a => !a); setTimeout(() => { if (!showAbout) document.getElementById('about').scrollIntoView({ behavior: 'smooth' }); }, 50); }}>About Coach Conor</button></div></section>
                 <section className={`about-section ${showAbout ? 'visible' : ''}`} id="about"><div className="about-content"><h2>About Coach Conor</h2><p>Coach Conor is a Raleigh native with a deep love of swimming and a life of experience in the sport. He currently serves as the head coach of the Wood Valley Otters, returning this year for his fifth year. He has over ten years of coaching experience working with swimmers of all ages on technique and stroke work.</p><p>When Coach Conor is not coaching in the summer, he works as a humanities teacher for middle and high schoolers at St. Thomas More Academy. He is the head coach of the school's swim team, which he started in 2015 while he was a student.</p><p>Coach Conor graduated from Hillsdale College and now lives in Knightdale with his lovely wife and daughter. During his free time, he enjoys reading, writing, and playing boardgames.</p><p className="about-certified">Coach Conor is lifeguard certified.</p></div></section>
                 <section className="pricing"><h2>Pricing</h2><div className="price-grid"><div className="price-card" onClick={() => handleBookingClick('private')}><div className="swimmers">1 Swimmer</div><div className="amount">$40</div><div className="duration">30 minutes</div><div className="click-hint">Click to book</div></div><div className="price-card" onClick={() => handleBookingClick('group')}><div className="swimmers">2 Swimmers</div><div className="amount">$70</div><div className="duration">30 minutes</div><div className="click-hint">Click to book</div></div></div></section>
-                <section className={`calendar-section ${showCalendar ? 'visible' : ''}`} id="calendar"><h2>Book Your Lesson</h2><SwimLessonCalendar {...{preselectedType, autoBookWeekly, bookedLessons, setBookedLessons, saveLessons, cancelledLessons, isDateBlocked, getFirstAvailableDate, dateWindowEnd, lessonTypeUpdate, weekdayTimeSettings}} /></section>
+                <section className={`calendar-section ${showCalendar ? 'visible' : ''}`} id="calendar"><h2>Book Your Lesson</h2><SwimLessonCalendar {...{preselectedType, autoBookWeekly, bookedLessons, setBookedLessons, saveLessons, cancelledLessons, isDateBlocked, getFirstAvailableDate, getClosestAvailableTo, dateWindowEnd, lessonTypeUpdate, weekdayTimeSettings}} /></section>
                 <footer><p>&copy; 2026 Swim for Life, LLC</p></footer>
             </>
         );

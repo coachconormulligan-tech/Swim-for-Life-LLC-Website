@@ -1,4 +1,4 @@
-    const SwimLessonCalendar = ({ preselectedType, autoBookWeekly, bookedLessons, setBookedLessons, saveLessons, cancelledLessons, isDateBlocked, getFirstAvailableDate, dateWindowEnd, lessonTypeUpdate, weekdayTimeSettings }) => {
+    const SwimLessonCalendar = ({ preselectedType, autoBookWeekly, bookedLessons, setBookedLessons, saveLessons, cancelledLessons, isDateBlocked, getFirstAvailableDate, getClosestAvailableTo, dateWindowEnd, lessonTypeUpdate, weekdayTimeSettings }) => {
         const [currentDate, setCurrentDate] = useState(() => { const f = getFirstAvailableDate(); return new Date(f.getFullYear(), f.getMonth(), 1); });
         const [selectedDate, setSelectedDate] = useState(null);
         const [selectedTime, setSelectedTime] = useState('');
@@ -494,9 +494,16 @@ END:VEVENT
             const conflict = conflictDates[currentConflictIndex];
             setReschedulingConflict(conflict);
             setShowConflictModal(false);
-            setCurrentDate(new Date(conflict.date.getFullYear(), conflict.date.getMonth(), 1));
-            setSelectedDate(null);
-            setSelectedTime('');
+            const closest = getClosestAvailableTo ? getClosestAvailableTo(conflict.date) : null;
+            if (closest) {
+                setCurrentDate(new Date(closest.year, closest.month, 1));
+                setSelectedDate({ year: closest.year, month: closest.month, day: closest.day });
+                setSelectedTime(closest.time);
+            } else {
+                setCurrentDate(new Date(conflict.date.getFullYear(), conflict.date.getMonth(), 1));
+                setSelectedDate(null);
+                setSelectedTime('');
+            }
         };
 
         const handleRescheduleComplete = (newTime) => {
@@ -509,15 +516,22 @@ END:VEVENT
                 pendingEmailDatesRef.current.push({ year: selectedDate.year, month: selectedDate.month, day: selectedDate.day, time: newTime });
             }
             const nextIndex = currentConflictIndex + 1;
-            if (nextIndex < conflictDates.length) { 
-                setCurrentConflictIndex(nextIndex); 
+            if (nextIndex < conflictDates.length) {
+                setCurrentConflictIndex(nextIndex);
                 const nextConflict = conflictDates[nextIndex];
-                setReschedulingConflict(nextConflict); 
-                setCurrentDate(new Date(nextConflict.date.getFullYear(), nextConflict.date.getMonth(), 1)); 
-                setSelectedDate(null);
-                setSelectedTime('');
+                setReschedulingConflict(nextConflict);
+                const nextClosest = getClosestAvailableTo ? getClosestAvailableTo(nextConflict.date) : null;
+                if (nextClosest) {
+                    setCurrentDate(new Date(nextClosest.year, nextClosest.month, 1));
+                    setSelectedDate({ year: nextClosest.year, month: nextClosest.month, day: nextClosest.day });
+                    setSelectedTime(nextClosest.time);
+                } else {
+                    setCurrentDate(new Date(nextConflict.date.getFullYear(), nextConflict.date.getMonth(), 1));
+                    setSelectedDate(null);
+                    setSelectedTime('');
+                }
             }
-            else { 
+            else {
                 // All conflicts resolved - send email now with all dates
                 if (pendingLessonInfo && pendingEmailDatesRef.current.length > 0) {
                     // Sort dates chronologically
@@ -541,13 +555,20 @@ END:VEVENT
         const handleSkipReschedule = () => {
             // Skipping this conflict - don't add anything to pendingEmailDatesRef
             const nextIndex = currentConflictIndex + 1;
-            if (nextIndex < conflictDates.length) { 
-                setCurrentConflictIndex(nextIndex); 
+            if (nextIndex < conflictDates.length) {
+                setCurrentConflictIndex(nextIndex);
                 const nextConflict = conflictDates[nextIndex];
-                setReschedulingConflict(nextConflict); 
-                setCurrentDate(new Date(nextConflict.date.getFullYear(), nextConflict.date.getMonth(), 1)); 
-                setSelectedDate(null);
-                setSelectedTime('');
+                setReschedulingConflict(nextConflict);
+                const nextClosest = getClosestAvailableTo ? getClosestAvailableTo(nextConflict.date) : null;
+                if (nextClosest) {
+                    setCurrentDate(new Date(nextClosest.year, nextClosest.month, 1));
+                    setSelectedDate({ year: nextClosest.year, month: nextClosest.month, day: nextClosest.day });
+                    setSelectedTime(nextClosest.time);
+                } else {
+                    setCurrentDate(new Date(nextConflict.date.getFullYear(), nextConflict.date.getMonth(), 1));
+                    setSelectedDate(null);
+                    setSelectedTime('');
+                }
             }
             else { 
                 // All conflicts done (this one skipped) - send email with current dates

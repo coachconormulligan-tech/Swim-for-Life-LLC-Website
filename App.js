@@ -1196,13 +1196,16 @@ END:VEVENT
                                             }
                                         });
 
+                                        // Always ensure currentYear is present even if no lessons are completed yet
+                                        if (!yearlyEarned[currentYear]) yearlyEarned[currentYear] = { revenue: 0, lessons: 0 };
+
                                         // Projected = earned YTD + all future booked lessons this year
                                         const futureThisYear = allLessons.filter(l => l.date >= today && l.date.getFullYear() === currentYear);
-                                        const projectedRevenue = (yearlyEarned[currentYear]?.revenue || 0) + futureThisYear.reduce((sum, l) => sum + (l.price || 0), 0);
-                                        const projectedLessons = (yearlyEarned[currentYear]?.lessons || 0) + futureThisYear.length;
+                                        const projectedRevenue = yearlyEarned[currentYear].revenue + futureThisYear.reduce((sum, l) => sum + (l.price || 0), 0);
+                                        const projectedLessons = yearlyEarned[currentYear].lessons + futureThisYear.length;
 
                                         const years = Object.keys(yearlyEarned).map(Number).sort();
-                                        if (years.length === 0) {
+                                        if (years.length === 0 && projectedRevenue === 0) {
                                             return <p style={{color: '#64748b', textAlign: 'center', padding: '2rem'}}>No yearly data yet</p>;
                                         }
 

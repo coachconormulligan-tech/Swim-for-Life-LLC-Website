@@ -1178,84 +1178,116 @@ END:VEVENT
                                 
                                 <div style={{background: 'white', borderRadius: '12px', padding: '1.5rem', marginTop: '1.5rem', boxShadow: '0 2px 8px rgba(0,0,0,0.08)'}}>
                                     <h4 style={{margin: '0 0 0.25rem 0', color: '#1e40af'}}>Year-over-Year Comparison</h4>
-                                    <p style={{fontSize: '0.8rem', color: '#94a3b8', marginBottom: '1rem'}}>Current year shown as earned-to-date; prior years show full year earned. Comparison uses the same calendar date range for fairness.</p>
+                                    <p style={{fontSize: '0.8rem', color: '#94a3b8', marginBottom: '1.25rem'}}>Past years show full year earned. Current year shows two bars: earned to date and projected full year (earned + all booked lessons).</p>
                                     {(() => {
                                         const today = new Date(); today.setHours(0, 0, 0, 0);
                                         const currentYear = today.getFullYear();
-                                        // For each year, only count completed (past) lessons
-                                        // For current year: Jan 1 → today; for past years: Jan 1 → Dec 31
                                         const allLessons = getAllLessonsForRevenue().filter(l => !l.isCancelled);
-                                        const yearlyData = {};
+
+                                        // Build per-year earned totals (completed only)
+                                        const yearlyEarned = {};
                                         allLessons.forEach(l => {
                                             const yr = l.date.getFullYear();
                                             const cutoff = yr === currentYear ? today : new Date(yr, 11, 31);
                                             if (l.date >= new Date(yr, 0, 1) && l.date < cutoff) {
-                                                if (!yearlyData[yr]) yearlyData[yr] = { revenue: 0, lessons: 0 };
-                                                yearlyData[yr].revenue += (l.price || 0);
-                                                yearlyData[yr].lessons += 1;
+                                                if (!yearlyEarned[yr]) yearlyEarned[yr] = { revenue: 0, lessons: 0 };
+                                                yearlyEarned[yr].revenue += (l.price || 0);
+                                                yearlyEarned[yr].lessons += 1;
                                             }
                                         });
 
-                                        const years = Object.keys(yearlyData).sort();
-                                        const maxRevenue = Math.max(...Object.values(yearlyData).map(d => d.revenue), 1);
+                                        // Projected = earned YTD + all future booked lessons this year
+                                        const futureThisYear = allLessons.filter(l => l.date >= today && l.date.getFullYear() === currentYear);
+                                        const projectedRevenue = (yearlyEarned[currentYear]?.revenue || 0) + futureThisYear.reduce((sum, l) => sum + (l.price || 0), 0);
+                                        const projectedLessons = (yearlyEarned[currentYear]?.lessons || 0) + futureThisYear.length;
 
+                                        const years = Object.keys(yearlyEarned).map(Number).sort();
                                         if (years.length === 0) {
                                             return <p style={{color: '#64748b', textAlign: 'center', padding: '2rem'}}>No yearly data yet</p>;
                                         }
 
+                                        const maxRevenue = Math.max(...years.map(yr => yearlyEarned[yr].revenue), projectedRevenue, 1);
                                         const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
                                         return (
                                             <>
-                                                <div style={{display: 'flex', alignItems: 'flex-end', gap: '2rem', height: '220px', padding: '0 1rem', justifyContent: 'center'}}>
-                                                    {years.map((year, i) => (
-                                                        <div key={year} style={{display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', minWidth: '80px'}}>
-                                                            <div style={{fontSize: '1rem', fontWeight: 700, color: '#059669'}}>${yearlyData[year].revenue}</div>
-                                                            <div style={{fontSize: '0.75rem', color: '#64748b'}}>{yearlyData[year].lessons} lessons</div>
-                                                            <div style={{
-                                                                width: '60px',
-                                                                height: `${(yearlyData[year].revenue / maxRevenue) * 140}px`,
-                                                                background: `linear-gradient(180deg, ${colors[i % colors.length]} 0%, ${colors[i % colors.length]}dd 100%)`,
-                                                                borderRadius: '8px 8px 0 0',
-                                                                minHeight: '8px',
-                                                                transition: 'height 0.3s ease'
-                                                            }}></div>
-                                                            <div style={{fontSize: '1rem', fontWeight: 700, color: '#1e293b'}}>{year}{Number(year) === currentYear ? ' *' : ''}</div>
-                                                        </div>
-                                                    ))}
+                                                <div style={{display: 'flex', alignItems: 'flex-end', gap: '2rem', height: '240px', padding: '0 1rem', justifyContent: 'center', flexWrap: 'wrap'}}>
+                                                    {years.map((year, i) => {
+                                                        const isCurrent = year === currentYear;
+                                                        const color = colors[i % colors.length];
+                                                        const earned = yearlyEarned[year];
+                                                        return (
+                                                            <div key={year} style={{display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem'}}>
+                                                                {/* Bar(s) */}
+                                                                <div style={{display: 'flex', alignItems: 'flex-end', gap: isCurrent ? '6px' : '0'}}>
+                                                                    {/* Earned bar (all years) */}
+                                                                    <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem'}}>
+                                                                        <div style={{fontSize: '0.75rem', fontWeight: 700, color: '#059669'}}>${earned.revenue}</div>
+                                                                        <div style={{
+                                                                            width: isCurrent ? '36px' : '56px',
+                                                                            height: `${(earned.revenue / maxRevenue) * 150}px`,
+                                                                            background: `linear-gradient(180deg, ${color} 0%, ${color}cc 100%)`,
+                                                                            borderRadius: '6px 6px 0 0',
+                                                                            minHeight: '4px',
+                                                                            transition: 'height 0.3s ease'
+                                                                        }}></div>
+                                                                        {isCurrent && <div style={{fontSize: '0.6rem', color: '#475569', fontWeight: 600}}>Earned</div>}
+                                                                    </div>
+                                                                    {/* Projected bar (current year only) */}
+                                                                    {isCurrent && (
+                                                                        <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem'}}>
+                                                                            <div style={{fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8'}}>${projectedRevenue}</div>
+                                                                            <div style={{
+                                                                                width: '36px',
+                                                                                height: `${(projectedRevenue / maxRevenue) * 150}px`,
+                                                                                background: `linear-gradient(180deg, ${color}55 0%, ${color}33 100%)`,
+                                                                                border: `2px dashed ${color}99`,
+                                                                                borderRadius: '6px 6px 0 0',
+                                                                                minHeight: '4px',
+                                                                                transition: 'height 0.3s ease',
+                                                                                boxSizing: 'border-box'
+                                                                            }}></div>
+                                                                            <div style={{fontSize: '0.6rem', color: '#94a3b8', fontWeight: 600}}>Projected</div>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                                {/* Year label */}
+                                                                <div style={{fontSize: '0.9rem', fontWeight: 700, color: isCurrent ? color : '#1e293b', marginTop: '0.1rem'}}>{year}</div>
+                                                                <div style={{fontSize: '0.7rem', color: '#94a3b8'}}>{isCurrent ? `${earned.lessons} earned / ${projectedLessons} proj.` : `${earned.lessons} lessons`}</div>
+                                                            </div>
+                                                        );
+                                                    })}
                                                 </div>
 
-                                                {years.length >= 2 && (
-                                                    <div style={{marginTop: '1.5rem', padding: '1rem', background: '#f0fdf4', borderRadius: '8px', textAlign: 'center'}}>
+                                                {/* Legend */}
+                                                <div style={{display: 'flex', gap: '1.5rem', justifyContent: 'center', marginTop: '1rem', flexWrap: 'wrap'}}>
+                                                    <div style={{display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', color: '#475569'}}>
+                                                        <div style={{width: '16px', height: '10px', background: '#3b82f6', borderRadius: '3px'}}></div>
+                                                        Earned (completed lessons)
+                                                    </div>
+                                                    <div style={{display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', color: '#94a3b8'}}>
+                                                        <div style={{width: '16px', height: '10px', background: '#3b82f655', border: '2px dashed #3b82f699', borderRadius: '3px', boxSizing: 'border-box'}}></div>
+                                                        Projected (earned + upcoming)
+                                                    </div>
+                                                </div>
+
+                                                {/* YTD comparison note */}
+                                                {years.includes(currentYear - 1) && (
+                                                    <div style={{marginTop: '1.25rem', padding: '1rem', background: '#f0fdf4', borderRadius: '8px', textAlign: 'center'}}>
                                                         {(() => {
                                                             const lastYear = currentYear - 1;
-                                                            // Fair YTD comparison: current year Jan 1→today vs last year Jan 1→same date last year
                                                             const sameLastYear = new Date(lastYear, today.getMonth(), today.getDate());
                                                             const lastYearYTD = allLessons.filter(l => l.date.getFullYear() === lastYear && l.date >= new Date(lastYear, 0, 1) && l.date < sameLastYear).reduce((sum, l) => sum + (l.price || 0), 0);
-                                                            const currentRevenue = yearlyData[currentYear]?.revenue || 0;
-
-                                                            if (!yearlyData[lastYear]) {
-                                                                return <span style={{color: '#64748b', fontSize: '0.875rem'}}>First year of tracking — no comparison available yet</span>;
-                                                            }
-
-                                                            const diff = currentRevenue - lastYearYTD;
+                                                            const currentEarned = yearlyEarned[currentYear]?.revenue || 0;
+                                                            const diff = currentEarned - lastYearYTD;
                                                             const pctChange = lastYearYTD === 0 ? null : Math.round((diff / lastYearYTD) * 100);
                                                             const isUp = diff >= 0;
-                                                            
-                                                            return (
+                                                            return pctChange !== null ? (
                                                                 <span style={{fontSize: '0.875rem'}}>
-                                                                    {pctChange !== null ? (
-                                                                        <>
-                                                                            <strong style={{color: isUp ? '#059669' : '#dc2626'}}>
-                                                                                {isUp ? '↑' : '↓'} {isUp ? '+' : ''}{pctChange}%
-                                                                            </strong>
-                                                                            <span style={{color: '#64748b'}}> vs same period last year (${Math.abs(diff)} {isUp ? 'more' : 'less'} through {today.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })})</span>
-                                                                        </>
-                                                                    ) : (
-                                                                        <span style={{color: '#64748b'}}>No lessons recorded for last year's comparison period</span>
-                                                                    )}
+                                                                    <strong style={{color: isUp ? '#059669' : '#dc2626'}}>{isUp ? '↑' : '↓'} {isUp ? '+' : ''}{pctChange}%</strong>
+                                                                    <span style={{color: '#64748b'}}> vs same period last year (${Math.abs(diff)} {isUp ? 'more' : 'less'} earned through {today.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })})</span>
                                                                 </span>
-                                                            );
+                                                            ) : <span style={{color: '#64748b', fontSize: '0.875rem'}}>No lessons recorded for last year's comparison period</span>;
                                                         })()}
                                                     </div>
                                                 )}

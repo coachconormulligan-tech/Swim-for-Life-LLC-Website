@@ -807,10 +807,14 @@ END:VEVENT
 
                 {reschedulingConflict && (
                     <div className="reschedule-panel">
-                        <h4>Rescheduling: {reschedulingConflict.date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</h4>
-                        {reschedulingLessonInfo && <p style={{fontSize: '0.875rem', color: '#9a3412', marginBottom: '0.5rem'}}><strong>Lesson for:</strong> {reschedulingLessonInfo.swimmer1Name}{reschedulingLessonInfo.swimmer2Name && ` & ${reschedulingLessonInfo.swimmer2Name}`}</p>}
-                        
-                        <p style={{fontSize: '0.875rem', color: '#64748b', marginTop: '1rem'}}>Green highlighted days are in the same week as the conflict. Select a different date/time above, or skip this conflict.</p>
+                        <h4>Scheduling Conflict</h4>
+                        {reschedulingLessonInfo && <p style={{fontSize: '0.875rem', color: '#9a3412', marginBottom: '0.75rem'}}><strong>Lesson for:</strong> {reschedulingLessonInfo.swimmer1Name}{reschedulingLessonInfo.swimmer2Name && ` & ${reschedulingLessonInfo.swimmer2Name}`}</p>}
+
+                        <p style={{fontSize: '0.95rem', color: '#7c2d12', marginBottom: '0.5rem'}}>
+                            <strong>{reschedulingConflict.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}{reschedulingLessonInfo?.time ? ` at ${reschedulingLessonInfo.time.toLowerCase().replace(' ', '')}` : ''} is already booked.</strong>
+                        </p>
+                        <p style={{fontSize: '0.875rem', color: '#64748b', marginBottom: '0.25rem'}}>The next available day and time has been preselected for you. You may keep this time, select a different date/time above, or skip this conflict.</p>
+                        <p style={{fontSize: '0.875rem', color: '#64748b'}}>Green highlighted days are in the same week as the conflict.</p>
                         
                         {selectedDate && (
                             <>

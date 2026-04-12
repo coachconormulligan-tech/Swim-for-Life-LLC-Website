@@ -1177,29 +1177,34 @@ END:VEVENT
                                 </div>
                                 
                                 <div style={{background: 'white', borderRadius: '12px', padding: '1.5rem', marginTop: '1.5rem', boxShadow: '0 2px 8px rgba(0,0,0,0.08)'}}>
-                                    <h4 style={{margin: '0 0 1rem 0', color: '#1e40af'}}>Year-over-Year Comparison</h4>
+                                    <h4 style={{margin: '0 0 0.25rem 0', color: '#1e40af'}}>Year-over-Year Comparison</h4>
+                                    <p style={{fontSize: '0.8rem', color: '#94a3b8', marginBottom: '1rem'}}>Current year shown as earned-to-date; prior years show full year earned. Comparison uses the same calendar date range for fairness.</p>
                                     {(() => {
-                                        const lessons = getAllLessonsForRevenue().filter(l => !l.isCancelled);
+                                        const today = new Date(); today.setHours(0, 0, 0, 0);
+                                        const currentYear = today.getFullYear();
+                                        // For each year, only count completed (past) lessons
+                                        // For current year: Jan 1 → today; for past years: Jan 1 → Dec 31
+                                        const allLessons = getAllLessonsForRevenue().filter(l => !l.isCancelled);
                                         const yearlyData = {};
-                                        
-                                        lessons.forEach(l => {
-                                            const year = l.date.getFullYear();
-                                            if (!yearlyData[year]) {
-                                                yearlyData[year] = { revenue: 0, lessons: 0 };
+                                        allLessons.forEach(l => {
+                                            const yr = l.date.getFullYear();
+                                            const cutoff = yr === currentYear ? today : new Date(yr, 11, 31);
+                                            if (l.date >= new Date(yr, 0, 1) && l.date < cutoff) {
+                                                if (!yearlyData[yr]) yearlyData[yr] = { revenue: 0, lessons: 0 };
+                                                yearlyData[yr].revenue += (l.price || 0);
+                                                yearlyData[yr].lessons += 1;
                                             }
-                                            yearlyData[year].revenue += (l.price || 0);
-                                            yearlyData[year].lessons += 1;
                                         });
-                                        
+
                                         const years = Object.keys(yearlyData).sort();
                                         const maxRevenue = Math.max(...Object.values(yearlyData).map(d => d.revenue), 1);
-                                        
+
                                         if (years.length === 0) {
                                             return <p style={{color: '#64748b', textAlign: 'center', padding: '2rem'}}>No yearly data yet</p>;
                                         }
-                                        
+
                                         const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
-                                        
+
                                         return (
                                             <>
                                                 <div style={{display: 'flex', alignItems: 'flex-end', gap: '2rem', height: '220px', padding: '0 1rem', justifyContent: 'center'}}>
@@ -1215,33 +1220,40 @@ END:VEVENT
                                                                 minHeight: '8px',
                                                                 transition: 'height 0.3s ease'
                                                             }}></div>
-                                                            <div style={{fontSize: '1rem', fontWeight: 700, color: '#1e293b'}}>{year}</div>
+                                                            <div style={{fontSize: '1rem', fontWeight: 700, color: '#1e293b'}}>{year}{Number(year) === currentYear ? ' *' : ''}</div>
                                                         </div>
                                                     ))}
                                                 </div>
-                                                
+
                                                 {years.length >= 2 && (
                                                     <div style={{marginTop: '1.5rem', padding: '1rem', background: '#f0fdf4', borderRadius: '8px', textAlign: 'center'}}>
                                                         {(() => {
-                                                            const currentYear = new Date().getFullYear();
                                                             const lastYear = currentYear - 1;
+                                                            // Fair YTD comparison: current year Jan 1→today vs last year Jan 1→same date last year
+                                                            const sameLastYear = new Date(lastYear, today.getMonth(), today.getDate());
+                                                            const lastYearYTD = allLessons.filter(l => l.date.getFullYear() === lastYear && l.date >= new Date(lastYear, 0, 1) && l.date < sameLastYear).reduce((sum, l) => sum + (l.price || 0), 0);
                                                             const currentRevenue = yearlyData[currentYear]?.revenue || 0;
-                                                            const lastRevenue = yearlyData[lastYear]?.revenue || 0;
-                                                            
-                                                            if (lastRevenue === 0) {
-                                                                return <span style={{color: '#64748b', fontSize: '0.875rem'}}>First year of tracking - no comparison available</span>;
+
+                                                            if (!yearlyData[lastYear]) {
+                                                                return <span style={{color: '#64748b', fontSize: '0.875rem'}}>First year of tracking — no comparison available yet</span>;
                                                             }
-                                                            
-                                                            const diff = currentRevenue - lastRevenue;
-                                                            const pctChange = Math.round((diff / lastRevenue) * 100);
+
+                                                            const diff = currentRevenue - lastYearYTD;
+                                                            const pctChange = lastYearYTD === 0 ? null : Math.round((diff / lastYearYTD) * 100);
                                                             const isUp = diff >= 0;
                                                             
                                                             return (
                                                                 <span style={{fontSize: '0.875rem'}}>
-                                                                    <strong style={{color: isUp ? '#059669' : '#dc2626'}}>
-                                                                        {isUp ? '↑' : '↓'} {isUp ? '+' : ''}{pctChange}%
-                                                                    </strong>
-                                                                    <span style={{color: '#64748b'}}> vs last year (${Math.abs(diff)} {isUp ? 'more' : 'less'})</span>
+                                                                    {pctChange !== null ? (
+                                                                        <>
+                                                                            <strong style={{color: isUp ? '#059669' : '#dc2626'}}>
+                                                                                {isUp ? '↑' : '↓'} {isUp ? '+' : ''}{pctChange}%
+                                                                            </strong>
+                                                                            <span style={{color: '#64748b'}}> vs same period last year (${Math.abs(diff)} {isUp ? 'more' : 'less'} through {today.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })})</span>
+                                                                        </>
+                                                                    ) : (
+                                                                        <span style={{color: '#64748b'}}>No lessons recorded for last year's comparison period</span>
+                                                                    )}
                                                                 </span>
                                                             );
                                                         })()}

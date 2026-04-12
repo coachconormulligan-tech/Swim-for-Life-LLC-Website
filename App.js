@@ -37,6 +37,7 @@
         // Student contact editing state
         const [editingStudentContact, setEditingStudentContact] = useState(null);
         const [editContactData, setEditContactData] = useState({ parentName: '', email: '', phone: '' });
+        const [selectedRevenueYear, setSelectedRevenueYear] = useState(new Date().getFullYear());
 
         // Helper to get lesson times for a specific weekday
         const getLessonTimesForDay = (dayIndex) => {
@@ -184,7 +185,6 @@
 
         const getClosestAvailableTo = (targetDate) => {
             let checkDate = new Date(targetDate);
-            checkDate.setDate(checkDate.getDate() + 1);
             for (let i = 0; i < 365; i++) {
                 const year = checkDate.getFullYear(), month = checkDate.getMonth(), day = checkDate.getDate();
                 const dateKey = `${year}-${month}-${day}`;
@@ -468,8 +468,11 @@
 
         const exportCompletedToExcel = () => {
             const today = new Date(); today.setHours(0, 0, 0, 0);
-            const completedLessons = getAllLessonsForRevenue().filter(l => !l.isCancelled && l.date < today);
-            if (completedLessons.length === 0) { alert('No completed lessons to export.'); return; }
+            const currentYear = new Date().getFullYear();
+            const yearStart = new Date(selectedRevenueYear, 0, 1);
+            const yearEnd = selectedRevenueYear === currentYear ? today : new Date(selectedRevenueYear, 11, 31);
+            const completedLessons = getAllLessonsForRevenue().filter(l => !l.isCancelled && l.date >= yearStart && l.date < yearEnd);
+            if (completedLessons.length === 0) { alert(`No completed lessons found for ${selectedRevenueYear}.`); return; }
             const rows = [];
             completedLessons.forEach(l => {
                 const addRow = (swimmerName) => {
@@ -499,7 +502,7 @@
             ];
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, 'Completed Lessons');
-            XLSX.writeFile(wb, `completed-lessons-${new Date().toISOString().split('T')[0]}.xlsx`);
+            XLSX.writeFile(wb, `completed-lessons-${selectedRevenueYear}.xlsx`);
         };
 
         const printSchedule = () => {
@@ -628,45 +631,57 @@ END:VEVENT
             return allLessons.sort((a, b) => a.date - b.date);
         };
 
-        const getRevenueByWeek = () => {
+        const getRevenueByWeek = (year) => {
             const today = new Date(); today.setHours(0, 0, 0, 0);
-            const lessons = getAllLessonsForRevenue().filter(l => !l.isCancelled && l.date < today);
+            const currentYear = new Date().getFullYear();
+            const yearStart = new Date(year, 0, 1);
+            const yearEnd = year === currentYear ? today : new Date(year, 11, 31);
+            const lessons = getAllLessonsForRevenue().filter(l => !l.isCancelled && l.date >= yearStart && l.date < yearEnd);
             const weeklyData = {};
-            
+
             lessons.forEach(l => {
                 const weekStart = new Date(l.date);
                 const dayOfWeek = weekStart.getDay();
                 weekStart.setDate(weekStart.getDate() - dayOfWeek);
                 weekStart.setHours(0, 0, 0, 0);
                 const weekKey = weekStart.toISOString().split('T')[0];
-                
+
                 if (!weeklyData[weekKey]) {
                     weeklyData[weekKey] = { weekStart: new Date(weekStart), revenue: 0, lessons: 0 };
                 }
                 weeklyData[weekKey].revenue += (l.price || 0);
                 weeklyData[weekKey].lessons += 1;
             });
-            
-            return Object.values(weeklyData).sort((a, b) => a.weekStart - b.weekStart).slice(-8); // Last 8 weeks
+
+            return Object.values(weeklyData).sort((a, b) => a.weekStart - b.weekStart);
         };
 
-        const getRevenueByMonth = () => {
+        const getRevenueByMonth = (year) => {
             const today = new Date(); today.setHours(0, 0, 0, 0);
-            const lessons = getAllLessonsForRevenue().filter(l => !l.isCancelled && l.date < today);
+            const currentYear = new Date().getFullYear();
+            const yearStart = new Date(year, 0, 1);
+            const yearEnd = year === currentYear ? today : new Date(year, 11, 31);
+            const lessons = getAllLessonsForRevenue().filter(l => !l.isCancelled && l.date >= yearStart && l.date < yearEnd);
             const monthlyData = {};
-            
+
             lessons.forEach(l => {
                 const monthKey = `${l.date.getFullYear()}-${l.date.getMonth()}`;
                 const monthStart = new Date(l.date.getFullYear(), l.date.getMonth(), 1);
-                
+
                 if (!monthlyData[monthKey]) {
                     monthlyData[monthKey] = { monthStart, revenue: 0, lessons: 0 };
                 }
                 monthlyData[monthKey].revenue += (l.price || 0);
                 monthlyData[monthKey].lessons += 1;
             });
-            
-            return Object.values(monthlyData).sort((a, b) => a.monthStart - b.monthStart).slice(-6); // Last 6 months
+
+            return Object.values(monthlyData).sort((a, b) => a.monthStart - b.monthStart);
+        };
+
+        const getAvailableRevenueYears = () => {
+            const years = new Set(getAllLessonsForRevenue().map(l => l.date.getFullYear()));
+            years.add(new Date().getFullYear());
+            return Array.from(years).sort((a, b) => b - a); // Newest first
         };
 
         // Get all unique students from all lessons
@@ -870,7 +885,7 @@ END:VEVENT
                                     </div>
                                     <div style={{display: 'flex', gap: '0.5rem', flexWrap: 'wrap'}}>
                                         <button onClick={exportToExcel} style={{padding: '0.5rem 1rem', background: '#059669', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 500, cursor: 'pointer', fontSize: '0.875rem', fontFamily: 'inherit'}}>Export to Excel</button>
-                                        <button onClick={exportCompletedToExcel} style={{padding: '0.5rem 1rem', background: '#7c3aed', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 500, cursor: 'pointer', fontSize: '0.875rem', fontFamily: 'inherit'}}>Export Completed Lessons</button>
+                                        <button onClick={exportCompletedToExcel} style={{padding: '0.5rem 1rem', background: '#7c3aed', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 500, cursor: 'pointer', fontSize: '0.875rem', fontFamily: 'inherit'}}>Export Completed Lessons ({selectedRevenueYear})</button>
                                         <button onClick={exportToCalendar} style={{padding: '0.5rem 1rem', background: '#0ea5e9', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 500, cursor: 'pointer', fontSize: '0.875rem', fontFamily: 'inherit'}}>Export to Calendar</button>
                                         <button onClick={printSchedule} style={{padding: '0.5rem 1rem', background: '#6366f1', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 500, cursor: 'pointer', fontSize: '0.875rem', fontFamily: 'inherit'}}>Print Schedule</button>
                                     </div>
@@ -978,41 +993,68 @@ END:VEVENT
                         
                         {adminTab === 'revenue' && (
                             <>
-                                <div className="admin-stats">
-                                    <div className="stat-card"><h4>Upcoming Revenue</h4><div className="stat-value">${(() => {
-                                        const today = new Date();
-                                        today.setHours(0, 0, 0, 0);
-                                        return getAllLessonsForRevenue().filter(l => !l.isCancelled && l.date >= today).reduce((sum, l) => sum + (l.price || 0), 0);
-                                    })()}</div></div>
-                                    <div className="stat-card"><h4>Total Lessons</h4><div className="stat-value">{getAllLessonsForRevenue().filter(l => !l.isCancelled).length}</div></div>
-                                    <div className="stat-card"><h4>This Week (Earned)</h4><div className="stat-value">${(() => {
-                                        const today = new Date(); today.setHours(0, 0, 0, 0);
-                                        const weekStart = new Date(today);
-                                        weekStart.setDate(today.getDate() - today.getDay());
-                                        weekStart.setHours(0, 0, 0, 0);
-                                        return getAllLessonsForRevenue().filter(l => !l.isCancelled && l.date >= weekStart && l.date < today).reduce((sum, l) => sum + (l.price || 0), 0);
-                                    })()}</div></div>
-                                    <div className="stat-card"><h4>This Month (Earned)</h4><div className="stat-value">${(() => {
-                                        const today = new Date(); today.setHours(0, 0, 0, 0);
-                                        const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-                                        return getAllLessonsForRevenue().filter(l => !l.isCancelled && l.date >= monthStart && l.date < today).reduce((sum, l) => sum + (l.price || 0), 0);
-                                    })()}</div></div>
+                                {/* Year selector */}
+                                <div style={{display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem', padding: '1rem 1.25rem', background: 'white', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)'}}>
+                                    <span style={{fontWeight: 600, color: '#475569', fontSize: '0.9rem'}}>Tax Year:</span>
+                                    <select value={selectedRevenueYear} onChange={e => setSelectedRevenueYear(Number(e.target.value))} style={{padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontFamily: 'inherit', fontWeight: 600, color: '#1e40af', fontSize: '1rem', cursor: 'pointer', background: '#f8fafc'}}>
+                                        {getAvailableRevenueYears().map(y => <option key={y} value={y}>{y}{y === new Date().getFullYear() ? ' (Current)' : ''}</option>)}
+                                    </select>
+                                    <span style={{fontSize: '0.85rem', color: '#64748b'}}>
+                                        {selectedRevenueYear === new Date().getFullYear() ? `Jan 1 – Today (Year-to-Date)` : `Jan 1 – Dec 31, ${selectedRevenueYear} (Full Year)`}
+                                    </span>
                                 </div>
-                                
+
+                                {/* Stat cards — year-aware */}
+                                {(() => {
+                                    const today = new Date(); today.setHours(0, 0, 0, 0);
+                                    const currentYear = new Date().getFullYear();
+                                    const yearStart = new Date(selectedRevenueYear, 0, 1);
+                                    const yearEnd = selectedRevenueYear === currentYear ? today : new Date(selectedRevenueYear, 11, 31);
+                                    const yearLessons = getAllLessonsForRevenue().filter(l => !l.isCancelled && l.date >= yearStart && l.date < yearEnd);
+                                    const yearRevenue = yearLessons.reduce((sum, l) => sum + (l.price || 0), 0);
+                                    const isCurrentYear = selectedRevenueYear === currentYear;
+                                    const weekStart = new Date(today); weekStart.setDate(today.getDate() - today.getDay()); weekStart.setHours(0,0,0,0);
+                                    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+                                    return (
+                                        <div className="admin-stats">
+                                            <div className="stat-card" style={{background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)', border: '1px solid #a7f3d0'}}>
+                                                <h4 style={{color: '#047857'}}>{isCurrentYear ? 'Year-to-Date Earned' : `Total Earned (${selectedRevenueYear})`}</h4>
+                                                <div className="stat-value" style={{color: '#059669'}}>${yearRevenue}</div>
+                                            </div>
+                                            <div className="stat-card"><h4>Lessons ({selectedRevenueYear})</h4><div className="stat-value">{yearLessons.length}</div></div>
+                                            {isCurrentYear && (
+                                                <div className="stat-card"><h4>Upcoming Revenue</h4><div className="stat-value">${getAllLessonsForRevenue().filter(l => !l.isCancelled && l.date >= today && l.date.getFullYear() === currentYear).reduce((sum, l) => sum + (l.price || 0), 0)}</div></div>
+                                            )}
+                                            {isCurrentYear && (
+                                                <div className="stat-card"><h4>This Week (Earned)</h4><div className="stat-value">${yearLessons.filter(l => l.date >= weekStart).reduce((sum, l) => sum + (l.price || 0), 0)}</div></div>
+                                            )}
+                                            {isCurrentYear && (
+                                                <div className="stat-card"><h4>This Month (Earned)</h4><div className="stat-value">${yearLessons.filter(l => l.date >= monthStart).reduce((sum, l) => sum + (l.price || 0), 0)}</div></div>
+                                            )}
+                                            {!isCurrentYear && (
+                                                <div className="stat-card"><h4>Private Lessons</h4><div className="stat-value">{yearLessons.filter(l => l.lessonType === 'private').length}</div></div>
+                                            )}
+                                            {!isCurrentYear && (
+                                                <div className="stat-card"><h4>Group Lessons</h4><div className="stat-value">{yearLessons.filter(l => l.lessonType === 'group').length}</div></div>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
+
                                 <div style={{background: 'white', borderRadius: '12px', padding: '1.5rem', marginBottom: '1.5rem', boxShadow: '0 2px 8px rgba(0,0,0,0.08)'}}>
-                                    <h4 style={{margin: '0 0 1rem 0', color: '#1e40af'}}>Weekly Revenue (Last 8 Weeks)</h4>
-                                    {getRevenueByWeek().length === 0 ? (
-                                        <p style={{color: '#64748b', textAlign: 'center', padding: '2rem'}}>No revenue data yet</p>
+                                    <h4 style={{margin: '0 0 1rem 0', color: '#1e40af'}}>Weekly Revenue — {selectedRevenueYear}</h4>
+                                    {getRevenueByWeek(selectedRevenueYear).length === 0 ? (
+                                        <p style={{color: '#64748b', textAlign: 'center', padding: '2rem'}}>No revenue data for {selectedRevenueYear}</p>
                                     ) : (
-                                        <div style={{display: 'flex', alignItems: 'flex-end', gap: '0.5rem', height: '200px', padding: '0 0.5rem'}}>
+                                        <div style={{display: 'flex', alignItems: 'flex-end', gap: '0.5rem', height: '200px', padding: '0 0.5rem', overflowX: 'auto'}}>
                                             {(() => {
-                                                const data = getRevenueByWeek();
+                                                const data = getRevenueByWeek(selectedRevenueYear);
                                                 const maxRevenue = Math.max(...data.map(d => d.revenue), 1);
                                                 return data.map((week, i) => (
-                                                    <div key={i} style={{flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem'}}>
+                                                    <div key={i} style={{flex: '0 0 auto', minWidth: '50px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem'}}>
                                                         <div style={{fontSize: '0.75rem', fontWeight: 600, color: '#059669'}}>${week.revenue}</div>
                                                         <div style={{
-                                                            width: '100%',
+                                                            width: '40px',
                                                             height: `${(week.revenue / maxRevenue) * 150}px`,
                                                             background: 'linear-gradient(180deg, #3b82f6 0%, #1e40af 100%)',
                                                             borderRadius: '6px 6px 0 0',
@@ -1028,15 +1070,15 @@ END:VEVENT
                                         </div>
                                     )}
                                 </div>
-                                
+
                                 <div style={{background: 'white', borderRadius: '12px', padding: '1.5rem', marginBottom: '1.5rem', boxShadow: '0 2px 8px rgba(0,0,0,0.08)'}}>
-                                    <h4 style={{margin: '0 0 1rem 0', color: '#1e40af'}}>Monthly Revenue (Last 6 Months)</h4>
-                                    {getRevenueByMonth().length === 0 ? (
-                                        <p style={{color: '#64748b', textAlign: 'center', padding: '2rem'}}>No revenue data yet</p>
+                                    <h4 style={{margin: '0 0 1rem 0', color: '#1e40af'}}>Monthly Revenue — {selectedRevenueYear}</h4>
+                                    {getRevenueByMonth(selectedRevenueYear).length === 0 ? (
+                                        <p style={{color: '#64748b', textAlign: 'center', padding: '2rem'}}>No revenue data for {selectedRevenueYear}</p>
                                     ) : (
                                         <div style={{display: 'flex', alignItems: 'flex-end', gap: '1rem', height: '200px', padding: '0 0.5rem'}}>
                                             {(() => {
-                                                const data = getRevenueByMonth();
+                                                const data = getRevenueByMonth(selectedRevenueYear);
                                                 const maxRevenue = Math.max(...data.map(d => d.revenue), 1);
                                                 return data.map((month, i) => (
                                                     <div key={i} style={{flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem'}}>
@@ -1062,9 +1104,13 @@ END:VEVENT
                                 
                                 <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem'}}>
                                     <div style={{background: 'white', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 2px 8px rgba(0,0,0,0.08)'}}>
-                                        <h4 style={{margin: '0 0 1rem 0', color: '#1e40af'}}>Revenue by Type</h4>
+                                        <h4 style={{margin: '0 0 1rem 0', color: '#1e40af'}}>Revenue by Type — {selectedRevenueYear}</h4>
                                         {(() => {
-                                            const lessons = getAllLessonsForRevenue().filter(l => !l.isCancelled);
+                                            const today = new Date(); today.setHours(0,0,0,0);
+                                            const currentYear = new Date().getFullYear();
+                                            const yearStart = new Date(selectedRevenueYear, 0, 1);
+                                            const yearEnd = selectedRevenueYear === currentYear ? today : new Date(selectedRevenueYear, 11, 31);
+                                            const lessons = getAllLessonsForRevenue().filter(l => !l.isCancelled && l.date >= yearStart && l.date < yearEnd);
                                             const privateRev = lessons.filter(l => l.lessonType === 'private').reduce((sum, l) => sum + (l.price || 0), 0);
                                             const groupRev = lessons.filter(l => l.lessonType === 'group').reduce((sum, l) => sum + (l.price || 0), 0);
                                             const total = privateRev + groupRev || 1;
@@ -1094,9 +1140,13 @@ END:VEVENT
                                     </div>
                                     
                                     <div style={{background: 'white', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 2px 8px rgba(0,0,0,0.08)'}}>
-                                        <h4 style={{margin: '0 0 1rem 0', color: '#1e40af'}}>Lesson Count by Type</h4>
+                                        <h4 style={{margin: '0 0 1rem 0', color: '#1e40af'}}>Lesson Count by Type — {selectedRevenueYear}</h4>
                                         {(() => {
-                                            const lessons = getAllLessonsForRevenue().filter(l => !l.isCancelled);
+                                            const today = new Date(); today.setHours(0,0,0,0);
+                                            const currentYear = new Date().getFullYear();
+                                            const yearStart = new Date(selectedRevenueYear, 0, 1);
+                                            const yearEnd = selectedRevenueYear === currentYear ? today : new Date(selectedRevenueYear, 11, 31);
+                                            const lessons = getAllLessonsForRevenue().filter(l => !l.isCancelled && l.date >= yearStart && l.date < yearEnd);
                                             const privateCount = lessons.filter(l => l.lessonType === 'private').length;
                                             const groupCount = lessons.filter(l => l.lessonType === 'group').length;
                                             const total = privateCount + groupCount || 1;

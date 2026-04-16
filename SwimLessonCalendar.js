@@ -197,10 +197,7 @@
             const bookedTimes = getActiveLessons(dateKey).map(l => l.time);
             const dayOfWeek = new Date(selDate.year, selDate.month, selDate.day).getDay();
             const dayTimes = getLessonTimesForDay(dayOfWeek);
-            const times = [];
-            if (!bookedTimes.includes(dayTimes[0])) times.push(dayTimes[0]);
-            for (let i = 1; i < dayTimes.length; i++) if (bookedTimes.includes(dayTimes[i-1]) && !bookedTimes.includes(dayTimes[i])) times.push(dayTimes[i]);
-            return times;
+            return dayTimes.filter(t => !bookedTimes.includes(t)).slice(0, 2);
         };
 
         const countWeeklyLessons = (startDate, time) => {

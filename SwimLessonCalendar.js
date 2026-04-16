@@ -351,18 +351,22 @@
             const swimmerInfo = lessonInfo.lessonType === 'group'
                 ? `${lessonInfo.swimmer1Name} (Age: ${calculateAge(lessonInfo.swimmer1Birthday)})\n${lessonInfo.swimmer2Name} (Age: ${calculateAge(lessonInfo.swimmer2Birthday)})`
                 : `${lessonInfo.swimmer1Name} (Age: ${calculateAge(lessonInfo.swimmer1Birthday)})`;
-            
+
             const lessonDatesFormatted = bookedDates.map((d, i) => {
                 const date = new Date(d.year, d.month, d.day);
                 const dateStr = date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
                 return `${i + 1}. ${dateStr} at ${d.time}`;
             }).join('\n');
-            
+
             const totalLessons = bookedDates.length;
             const pricePerLesson = lessonInfo.price;
             const totalPrice = totalLessons * pricePerLesson;
             const lessonTypeDisplay = lessonInfo.lessonType === 'private' ? 'Private (1 swimmer)' : 'Group (2 swimmers)';
-            
+
+            const poolObj = pools && lessonInfo.poolId ? pools.find(p => p.id === lessonInfo.poolId) : null;
+            const poolName = poolObj ? poolObj.name : '';
+            const poolAddress = poolObj ? (poolObj.address || '') : '';
+
             // Customer email
             const customerParams = {
                 parent_name: lessonInfo.parentName,
@@ -371,9 +375,11 @@
                 price_per_lesson: `$${pricePerLesson}`,
                 swimmer_info: swimmerInfo,
                 lesson_dates: lessonDatesFormatted,
-                parent_email: lessonInfo.email
+                parent_email: lessonInfo.email,
+                pool_name: poolName,
+                pool_address: poolAddress
             };
-            
+
             // Admin email
             const adminParams = {
                 parent_name: lessonInfo.parentName,
@@ -383,7 +389,9 @@
                 total_lessons: totalLessons,
                 total_price: `$${totalPrice}`,
                 swimmer_info: swimmerInfo,
-                lesson_dates: lessonDatesFormatted
+                lesson_dates: lessonDatesFormatted,
+                pool_name: poolName,
+                pool_address: poolAddress
             };
             
             // Send customer email

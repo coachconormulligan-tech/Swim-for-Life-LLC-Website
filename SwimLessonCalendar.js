@@ -668,8 +668,8 @@ END:VEVENT
                             isInConflictWeek = date >= weekStart && date <= weekEnd;
                         }
                         
-                        // Only count active (non-cancelled) lessons
-                        const bookedCount = getActiveLessons(dateKey).length;
+                        // Only count active (non-cancelled) lessons at the selected pool
+                        const bookedCount = getActiveLessons(dateKey).filter(l => !selectedPool || l.poolId === selectedPool).length;
                         const maxForDay = getLessonTimesForDay(date.getDay()).length;
                         const totalBars = Math.min(bookedCount + 1, maxForDay);
                         

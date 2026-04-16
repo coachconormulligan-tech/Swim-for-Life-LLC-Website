@@ -1,4 +1,4 @@
-    const AdminSchedulingPanel = ({ blockedDates, blockedWeekdays, dateWindowStart, dateWindowEnd, handleStartDateChange, handleEndDateChange, setDateWindowStart, setDateWindowEnd, toggleBlockedDate, toggleBlockedWeekday, isDateBlocked, bookedLessons, cancelledLessons, firstAvailableDate, saveSettings, weekdayTimeSettings, setWeekdayTimeSettings, pools, setPools, poolSettings, setPoolSettings, savePools, savePoolSettings }) => {
+    const AdminSchedulingPanel = ({ blockedDates, blockedWeekdays, dateWindowStart, dateWindowEnd, handleStartDateChange, handleEndDateChange, setDateWindowStart, setDateWindowEnd, toggleBlockedDate, toggleBlockedWeekday, isDateBlocked, bookedLessons, cancelledLessons, firstAvailableDate, saveSettings, weekdayTimeSettings, setWeekdayTimeSettings, pools, setPools, poolSettings, setPoolSettings, savePools, savePoolSettings, poolSaveError, setPoolSaveError }) => {
         const [currentDate, setCurrentDate] = useState(new Date(firstAvailableDate.getFullYear(), firstAvailableDate.getMonth(), 1));
         const [editingWeekday, setEditingWeekday] = useState(null);
         const [tempTimes, setTempTimes] = useState([]);
@@ -209,6 +209,17 @@
                         <h4 style={{margin: 0, color: '#1e40af'}}>Pool Management</h4>
                         {!showAddPoolForm && <button onClick={() => setShowAddPoolForm(true)} style={{padding: '0.5rem 1rem', background: '#1e40af', color: 'white', border: 'none', borderRadius: '8px', fontSize: '0.875rem', cursor: 'pointer', fontFamily: 'inherit'}}>+ Add Pool</button>}
                     </div>
+
+                    {poolSaveError && (
+                        <div style={{background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '0.75rem 1rem', marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem'}}>
+                            <div>
+                                <strong style={{color: '#dc2626', fontSize: '0.875rem'}}>Pool save failed</strong>
+                                <p style={{margin: '0.25rem 0 0 0', color: '#991b1b', fontSize: '0.8rem'}}>{poolSaveError}</p>
+                                <p style={{margin: '0.25rem 0 0 0', color: '#991b1b', fontSize: '0.8rem'}}>To fix: open the <strong>Firebase console</strong> → Firestore Database → Rules, and ensure the "pools" and "poolSettings" documents are allowed for read/write.</p>
+                            </div>
+                            <button onClick={() => setPoolSaveError(null)} style={{background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: '1rem', lineHeight: 1, flexShrink: 0}}>✕</button>
+                        </div>
+                    )}
 
                     {showAddPoolForm && (
                         <div style={{background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '8px', padding: '1rem', marginBottom: '1rem'}}>

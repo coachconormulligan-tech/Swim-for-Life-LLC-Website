@@ -34,6 +34,7 @@
         // Pools and per-pool settings
         const [pools, setPools] = useState([]);
         const [poolSettings, setPoolSettings] = useState({});
+        const [poolSaveError, setPoolSaveError] = useState(null);
         // Lesson editing state
         const [editingLesson, setEditingLesson] = useState(null);
         const [editLessonData, setEditLessonData] = useState({});
@@ -142,14 +143,25 @@
             catch (e) { console.error('Error saving student notes:', e); }
         };
         const savePools = async (p) => {
-            if (!db) return;
-            try { await db.collection('swimLessons').doc('pools').set({ data: p }); }
-            catch (e) { console.error('Error saving pools:', e); }
+            if (!db) { setPoolSaveError('Firebase is not connected. Pool data cannot be saved.'); return; }
+            try {
+                await db.collection('swimLessons').doc('pools').set({ data: p });
+                setPoolSaveError(null);
+            }
+            catch (e) {
+                console.error('Error saving pools:', e);
+                setPoolSaveError(`Failed to save pool data: ${e.message || e.code || 'Unknown error'}. Check Firestore security rules — the "pools" document may not be permitted.`);
+            }
         };
         const savePoolSettings = async (ps) => {
             if (!db) return;
-            try { await db.collection('swimLessons').doc('poolSettings').set({ data: ps }); }
-            catch (e) { console.error('Error saving pool settings:', e); }
+            try {
+                await db.collection('swimLessons').doc('poolSettings').set({ data: ps });
+            }
+            catch (e) {
+                console.error('Error saving pool settings:', e);
+                setPoolSaveError(prev => prev || `Failed to save pool settings: ${e.message || e.code || 'Unknown error'}.`);
+            }
         };
 
         // Reset all booking data
@@ -199,6 +211,8 @@
                     if (ps.dateWindowStart && date < new Date(ps.dateWindowStart)) return true;
                     if (ps.dateWindowEnd && date > new Date(ps.dateWindowEnd)) return true;
                 }
+                // Also respect globally blocked dates set by admin
+                if (blockedDates.has(dateKey)) return true;
                 return false;
             }
 
@@ -229,12 +243,11 @@
         };
 
         const getClosestAvailableTo = (targetDate, poolId = null) => {
-            let checkDate = new Date(targetDate);
-            for (let i = 0; i < 365; i++) {
-                const year = checkDate.getFullYear(), month = checkDate.getMonth(), day = checkDate.getDate();
+            const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1); tomorrow.setHours(0,0,0,0);
+            const findSlot = (date) => {
+                const year = date.getFullYear(), month = date.getMonth(), day = date.getDate();
                 const dateKey = `${year}-${month}-${day}`;
-                const dayOfWeek = checkDate.getDay();
-                const dayTimes = getLessonTimesForDay(dayOfWeek, poolId);
+                const dayTimes = getLessonTimesForDay(date.getDay(), poolId);
                 if (!isDateBlocked(year, month, day, poolId) && dayTimes.length > 0) {
                     const booked = (bookedLessons[dateKey] || []).filter(l => !cancelledLessons.has(`${dateKey}-${l.time}`));
                     const bookedTimes = booked.map(l => l.time);
@@ -243,6 +256,29 @@
                     else { for (let j = 1; j < dayTimes.length; j++) { if (bookedTimes.includes(dayTimes[j-1]) && !bookedTimes.includes(dayTimes[j])) { availTime = dayTimes[j]; break; } } }
                     if (availTime) return { year, month, day, time: availTime };
                 }
+                return null;
+            };
+            // 1. Search forward within 1 week of the target date
+            let checkDate = new Date(targetDate);
+            for (let i = 0; i < 7; i++) {
+                const result = findSlot(checkDate);
+                if (result) return result;
+                checkDate.setDate(checkDate.getDate() + 1);
+            }
+            // 2. Search backward up to 1 week (but not into the past)
+            checkDate = new Date(targetDate); checkDate.setDate(checkDate.getDate() - 1);
+            for (let i = 0; i < 7; i++) {
+                if (checkDate >= tomorrow) {
+                    const result = findSlot(checkDate);
+                    if (result) return result;
+                }
+                checkDate.setDate(checkDate.getDate() - 1);
+            }
+            // 3. Continue searching forward beyond 1 week
+            checkDate = new Date(targetDate); checkDate.setDate(checkDate.getDate() + 7);
+            for (let i = 0; i < 358; i++) {
+                const result = findSlot(checkDate);
+                if (result) return result;
                 checkDate.setDate(checkDate.getDate() + 1);
             }
             return null;
@@ -1624,7 +1660,7 @@ END:VEVENT
                             </>
                         )}
                         
-                        {adminTab === 'scheduling' && <AdminSchedulingPanel {...{blockedDates, blockedWeekdays, dateWindowStart, dateWindowEnd, handleStartDateChange, handleEndDateChange, setDateWindowStart, setDateWindowEnd, toggleBlockedDate, toggleBlockedWeekday, isDateBlocked, bookedLessons, cancelledLessons, firstAvailableDate: firstAvailable, saveSettings, weekdayTimeSettings, setWeekdayTimeSettings, pools, setPools, poolSettings, setPoolSettings, savePools, savePoolSettings}} />}
+                        {adminTab === 'scheduling' && <AdminSchedulingPanel {...{blockedDates, blockedWeekdays, dateWindowStart, dateWindowEnd, handleStartDateChange, handleEndDateChange, setDateWindowStart, setDateWindowEnd, toggleBlockedDate, toggleBlockedWeekday, isDateBlocked, bookedLessons, cancelledLessons, firstAvailableDate: firstAvailable, saveSettings, weekdayTimeSettings, setWeekdayTimeSettings, pools, setPools, poolSettings, setPoolSettings, savePools, savePoolSettings, poolSaveError, setPoolSaveError}} />}
                     </div>
                     {showCancelModal && cancelTarget && (
                         <div className="modal-overlay">

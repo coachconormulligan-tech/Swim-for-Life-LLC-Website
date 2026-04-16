@@ -242,7 +242,7 @@
             return new Date();
         };
 
-        const getClosestAvailableTo = (targetDate, poolId = null) => {
+        const getClosestAvailableTo = (targetDate, poolId = null, additionalBooked = []) => {
             const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1); tomorrow.setHours(0,0,0,0);
             const findSlot = (date) => {
                 const year = date.getFullYear(), month = date.getMonth(), day = date.getDate();
@@ -251,9 +251,11 @@
                 if (!isDateBlocked(year, month, day, poolId) && dayTimes.length > 0) {
                     const booked = (bookedLessons[dateKey] || []).filter(l => !cancelledLessons.has(`${dateKey}-${l.time}`));
                     const bookedTimes = booked.map(l => l.time);
+                    const pendingTimes = additionalBooked.filter(b => `${b.year}-${b.month}-${b.day}` === dateKey).map(b => b.time);
+                    const allBookedTimes = [...new Set([...bookedTimes, ...pendingTimes])];
                     let availTime = null;
-                    if (!bookedTimes.includes(dayTimes[0])) availTime = dayTimes[0];
-                    else { for (let j = 1; j < dayTimes.length; j++) { if (bookedTimes.includes(dayTimes[j-1]) && !bookedTimes.includes(dayTimes[j])) { availTime = dayTimes[j]; break; } } }
+                    if (!allBookedTimes.includes(dayTimes[0])) availTime = dayTimes[0];
+                    else { for (let j = 1; j < dayTimes.length; j++) { if (allBookedTimes.includes(dayTimes[j-1]) && !allBookedTimes.includes(dayTimes[j])) { availTime = dayTimes[j]; break; } } }
                     if (availTime) return { year, month, day, time: availTime };
                 }
                 return null;

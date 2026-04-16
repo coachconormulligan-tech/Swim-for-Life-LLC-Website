@@ -550,7 +550,7 @@ END:VEVENT
                 setCurrentConflictIndex(nextIndex);
                 const nextConflict = conflictDates[nextIndex];
                 setReschedulingConflict(nextConflict);
-                const nextClosest = getClosestAvailableTo ? getClosestAvailableTo(nextConflict.date) : null;
+                const nextClosest = getClosestAvailableTo ? getClosestAvailableTo(nextConflict.date, selectedPool, pendingEmailDatesRef.current) : null;
                 if (nextClosest) {
                     setCurrentDate(new Date(nextClosest.year, nextClosest.month, 1));
                     setSelectedDate({ year: nextClosest.year, month: nextClosest.month, day: nextClosest.day });
@@ -589,7 +589,7 @@ END:VEVENT
                 setCurrentConflictIndex(nextIndex);
                 const nextConflict = conflictDates[nextIndex];
                 setReschedulingConflict(nextConflict);
-                const nextClosest = getClosestAvailableTo ? getClosestAvailableTo(nextConflict.date) : null;
+                const nextClosest = getClosestAvailableTo ? getClosestAvailableTo(nextConflict.date, selectedPool, pendingEmailDatesRef.current) : null;
                 if (nextClosest) {
                     setCurrentDate(new Date(nextClosest.year, nextClosest.month, 1));
                     setSelectedDate({ year: nextClosest.year, month: nextClosest.month, day: nextClosest.day });
@@ -600,7 +600,7 @@ END:VEVENT
                     setSelectedTime('');
                 }
             }
-            else { 
+            else {
                 // All conflicts done (this one skipped) - send email with current dates
                 if (pendingLessonInfo && pendingEmailDatesRef.current.length > 0) {
                     const sortedDates = [...pendingEmailDatesRef.current].sort((a, b) => new Date(a.year, a.month, a.day) - new Date(b.year, b.month, b.day));

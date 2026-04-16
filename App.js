@@ -31,6 +31,9 @@
         const [editingNote, setEditingNote] = useState('');
         // Per-weekday time settings: { 0: ['4:00 PM', '3:30 PM'], 1: [...], ... }
         const [weekdayTimeSettings, setWeekdayTimeSettings] = useState({});
+        // Pools and per-pool settings
+        const [pools, setPools] = useState([]);
+        const [poolSettings, setPoolSettings] = useState({});
         // Lesson editing state
         const [editingLesson, setEditingLesson] = useState(null);
         const [editLessonData, setEditLessonData] = useState({});
@@ -39,12 +42,25 @@
         const [editContactData, setEditContactData] = useState({ parentName: '', email: '', phone: '' });
         const [selectedRevenueYear, setSelectedRevenueYear] = useState(new Date().getFullYear());
 
-        // Helper to get lesson times for a specific weekday
-        const getLessonTimesForDay = (dayIndex) => {
-            if (weekdayTimeSettings[dayIndex] && weekdayTimeSettings[dayIndex].length > 0) {
-                return weekdayTimeSettings[dayIndex];
+        // Helper to get lesson times for a specific weekday (optionally pool-specific)
+        const getLessonTimesForDay = (dayIndex, poolId = null) => {
+            const settings = poolId && poolSettings[poolId] ? poolSettings[poolId].weekdayTimeSettings : weekdayTimeSettings;
+            if (settings && settings[dayIndex] && settings[dayIndex].length > 0) {
+                return settings[dayIndex];
             }
             return DEFAULT_LESSON_TIMES;
+        };
+
+        // Pool lookup helpers
+        const getPoolName = (poolId) => {
+            if (!poolId) return '—';
+            const pool = pools.find(p => p.id === poolId);
+            return pool ? pool.name : 'Unknown Pool';
+        };
+        const getPoolAddress = (poolId) => {
+            if (!poolId) return '';
+            const pool = pools.find(p => p.id === poolId);
+            return pool ? pool.address : '';
         };
 
         // Helper to check if date is today
@@ -81,6 +97,12 @@
                     
                     const notesDoc = await db.collection('swimLessons').doc('studentNotes').get();
                     if (notesDoc.exists) setStudentNotes(notesDoc.data().data || {});
+
+                    const poolsDoc = await db.collection('swimLessons').doc('pools').get();
+                    if (poolsDoc.exists) setPools(poolsDoc.data().data || []);
+
+                    const poolSettingsDoc = await db.collection('swimLessons').doc('poolSettings').get();
+                    if (poolSettingsDoc.exists) setPoolSettings(poolSettingsDoc.data().data || {});
                 } catch (error) {
                     console.error('Error loading data:', error);
                 }
@@ -116,8 +138,18 @@
         };
         const saveStudentNotes = async (notes) => {
             if (!db) return;
-            try { await db.collection('swimLessons').doc('studentNotes').set({ data: notes }); } 
+            try { await db.collection('swimLessons').doc('studentNotes').set({ data: notes }); }
             catch (e) { console.error('Error saving student notes:', e); }
+        };
+        const savePools = async (p) => {
+            if (!db) return;
+            try { await db.collection('swimLessons').doc('pools').set({ data: p }); }
+            catch (e) { console.error('Error saving pools:', e); }
+        };
+        const savePoolSettings = async (ps) => {
+            if (!db) return;
+            try { await db.collection('swimLessons').doc('poolSettings').set({ data: ps }); }
+            catch (e) { console.error('Error saving pool settings:', e); }
         };
 
         // Reset all booking data
@@ -151,14 +183,27 @@
             setTimeout(() => document.getElementById('calendar')?.scrollIntoView({ behavior: 'smooth' }), 100);
         };
 
-        const isDateBlocked = (year, month, day) => {
+        const isDateBlocked = (year, month, day, poolId = null) => {
             const date = new Date(year, month, day);
             const dateKey = `${year}-${month}-${day}`;
             const dayOfWeek = date.getDay();
             // Block today - too short notice
             if (isToday(year, month, day)) return true;
+
+            if (poolId && poolSettings[poolId]) {
+                const ps = poolSettings[poolId];
+                if ((ps.blockedDates || []).includes(dateKey)) return true;
+                const dayTimes = ps.weekdayTimeSettings && ps.weekdayTimeSettings[dayOfWeek];
+                if (dayTimes && dayTimes.length === 0) return true;
+                if (ps.dateWindowStart || ps.dateWindowEnd) {
+                    if (ps.dateWindowStart && date < new Date(ps.dateWindowStart)) return true;
+                    if (ps.dateWindowEnd && date > new Date(ps.dateWindowEnd)) return true;
+                }
+                return false;
+            }
+
+            // Fall back to global settings (used by admin panel or legacy)
             if (blockedDates.has(dateKey)) return true;
-            // Block if no times configured for this day of week
             const dayTimes = weekdayTimeSettings[dayOfWeek];
             if (dayTimes && dayTimes.length === 0) return true;
             if (dateWindowStart || dateWindowEnd) {
@@ -168,7 +213,7 @@
             return false;
         };
 
-        const getFirstAvailableDate = () => {
+        const getFirstAvailableDate = (poolId = null) => {
             let checkDate = new Date();
             checkDate.setDate(checkDate.getDate() + 1);
             for (let i = 0; i < 365; i++) {
@@ -176,21 +221,21 @@
                 const dateKey = `${year}-${month}-${day}`;
                 const booked = (bookedLessons[dateKey] || []).filter(l => !cancelledLessons.has(`${dateKey}-${l.time}`));
                 const dayOfWeek = checkDate.getDay();
-                const maxForDay = getLessonTimesForDay(dayOfWeek).length;
-                if (!isDateBlocked(year, month, day) && booked.length < maxForDay) return checkDate;
+                const maxForDay = getLessonTimesForDay(dayOfWeek, poolId).length;
+                if (!isDateBlocked(year, month, day, poolId) && booked.length < maxForDay) return checkDate;
                 checkDate.setDate(checkDate.getDate() + 1);
             }
             return new Date();
         };
 
-        const getClosestAvailableTo = (targetDate) => {
+        const getClosestAvailableTo = (targetDate, poolId = null) => {
             let checkDate = new Date(targetDate);
             for (let i = 0; i < 365; i++) {
                 const year = checkDate.getFullYear(), month = checkDate.getMonth(), day = checkDate.getDate();
                 const dateKey = `${year}-${month}-${day}`;
                 const dayOfWeek = checkDate.getDay();
-                const dayTimes = getLessonTimesForDay(dayOfWeek);
-                if (!isDateBlocked(year, month, day) && dayTimes.length > 0) {
+                const dayTimes = getLessonTimesForDay(dayOfWeek, poolId);
+                if (!isDateBlocked(year, month, day, poolId) && dayTimes.length > 0) {
                     const booked = (bookedLessons[dateKey] || []).filter(l => !cancelledLessons.has(`${dateKey}-${l.time}`));
                     const bookedTimes = booked.map(l => l.time);
                     let availTime = null;
@@ -330,7 +375,8 @@
                 swimmer2Birthday: lesson.swimmer2Birthday || '',
                 lessonType: lesson.lessonType || 'private',
                 time: lesson.time,
-                newDateKey: lesson.dateKey
+                newDateKey: lesson.dateKey,
+                poolId: lesson.poolId || ''
             });
         };
 
@@ -354,7 +400,8 @@
                 swimmer2Birthday: editLessonData.swimmer2Birthday,
                 lessonType: editLessonData.lessonType,
                 time: newTime,
-                price: editLessonData.lessonType === 'group' ? 70 : 40
+                price: editLessonData.lessonType === 'group' ? 70 : 40,
+                poolId: editLessonData.poolId || editingLesson.poolId || ''
             };
             delete updatedLesson.date;
             delete updatedLesson.dateKey;
@@ -448,6 +495,8 @@
             const data = lessons.map(l => ({
                 'Date': l.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }),
                 'Time': l.time,
+                'Pool': getPoolName(l.poolId),
+                'Address': getPoolAddress(l.poolId),
                 'Type': l.lessonType === 'group' ? 'Group' : 'Private',
                 'Parent': l.parentName || '',
                 'Swimmer 1': l.swimmer1Name || '',
@@ -891,12 +940,16 @@ END:VEVENT
                                     </div>
                                 </div>
                                 <table className="lessons-table">
-                                    <thead><tr><th>Date</th><th>Time</th><th>Type</th><th>Parent</th><th>Swimmer(s)</th><th>Contact</th><th>Price</th><th>Action</th></tr></thead>
+                                    <thead><tr><th>Date</th><th>Time</th><th>Pool</th><th>Type</th><th>Parent</th><th>Swimmer(s)</th><th>Contact</th><th>Price</th><th>Action</th></tr></thead>
                                     <tbody>
-                                        {displayedLessons.length === 0 ? <tr><td colSpan="8" className="no-lessons">No upcoming lessons booked yet.</td></tr> : displayedLessons.map((lesson, i) => (
+                                        {displayedLessons.length === 0 ? <tr><td colSpan="9" className="no-lessons">No upcoming lessons booked yet.</td></tr> : displayedLessons.map((lesson, i) => (
                                             <tr key={i} className={lesson.isCancelled ? 'cancelled' : ''}>
                                                 <td>{lesson.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</td>
                                                 <td>{lesson.time}</td>
+                                                <td style={{fontSize: '0.8rem'}}>
+                                                    <div style={{fontWeight: 500}}>{getPoolName(lesson.poolId)}</div>
+                                                    {lesson.poolId && getPoolAddress(lesson.poolId) && <div style={{color: '#64748b', fontSize: '0.75rem'}}>{getPoolAddress(lesson.poolId)}</div>}
+                                                </td>
                                                 <td>{lesson.isCancelled ? <span className="lesson-type-badge cancelled">Cancelled</span> : <span className={`lesson-type-badge ${lesson.lessonType || 'private'}`}>{lesson.lessonType === 'group' ? 'Group' : 'Private'}</span>}</td>
                                                 <td>{lesson.parentName || '-'}</td>
                                                 <td>{lesson.swimmer1Name ? <>{lesson.swimmer1Name}{lesson.swimmer1Birthday ? ` (${calculateAge(lesson.swimmer1Birthday)})` : ''}{lesson.swimmer2Name && <><br/>{lesson.swimmer2Name}{lesson.swimmer2Birthday ? ` (${calculateAge(lesson.swimmer2Birthday)})` : ''}</>}</> : '-'}</td>
@@ -969,6 +1022,7 @@ END:VEVENT
                                                                 <div style={{fontWeight: 600, color: lesson.lessonType === 'group' ? '#92400e' : '#1e40af'}}>{lesson.time}</div>
                                                                 <div style={{color: '#475569', marginTop: '0.25rem'}}>{lesson.swimmer1Name}{lesson.swimmer2Name && `, ${lesson.swimmer2Name}`}</div>
                                                                 <div style={{color: '#64748b', fontSize: '0.675rem', marginTop: '0.25rem'}}>{lesson.lessonType === 'group' ? 'Group' : 'Private'} • ${lesson.price}</div>
+                                                                {lesson.poolId && <div style={{color: '#3b82f6', fontSize: '0.65rem', marginTop: '0.25rem', fontWeight: 500}}>{getPoolName(lesson.poolId)}</div>}
                                                             </div>
                                                         ))
                                                     )}
@@ -1570,7 +1624,7 @@ END:VEVENT
                             </>
                         )}
                         
-                        {adminTab === 'scheduling' && <AdminSchedulingPanel {...{blockedDates, blockedWeekdays, dateWindowStart, dateWindowEnd, handleStartDateChange, handleEndDateChange, setDateWindowStart, setDateWindowEnd, toggleBlockedDate, toggleBlockedWeekday, isDateBlocked, bookedLessons, cancelledLessons, firstAvailableDate: firstAvailable, saveSettings, weekdayTimeSettings, setWeekdayTimeSettings}} />}
+                        {adminTab === 'scheduling' && <AdminSchedulingPanel {...{blockedDates, blockedWeekdays, dateWindowStart, dateWindowEnd, handleStartDateChange, handleEndDateChange, setDateWindowStart, setDateWindowEnd, toggleBlockedDate, toggleBlockedWeekday, isDateBlocked, bookedLessons, cancelledLessons, firstAvailableDate: firstAvailable, saveSettings, weekdayTimeSettings, setWeekdayTimeSettings, pools, setPools, poolSettings, setPoolSettings, savePools, savePoolSettings}} />}
                     </div>
                     {showCancelModal && cancelTarget && (
                         <div className="modal-overlay">
@@ -1625,8 +1679,8 @@ END:VEVENT
                                     
                                     <div className="form-group" style={{margin: 0}}>
                                         <label style={{fontSize: '0.75rem', fontWeight: 600}}>Lesson Type</label>
-                                        <select 
-                                            value={editLessonData.lessonType} 
+                                        <select
+                                            value={editLessonData.lessonType}
                                             onChange={(e) => setEditLessonData({...editLessonData, lessonType: e.target.value})}
                                             className="form-select"
                                             style={{margin: 0}}
@@ -1635,6 +1689,21 @@ END:VEVENT
                                             <option value="group">Group ($70)</option>
                                         </select>
                                     </div>
+
+                                    {pools.length > 0 && (
+                                        <div className="form-group" style={{margin: 0}}>
+                                            <label style={{fontSize: '0.75rem', fontWeight: 600}}>Pool</label>
+                                            <select
+                                                value={editLessonData.poolId || ''}
+                                                onChange={(e) => setEditLessonData({...editLessonData, poolId: e.target.value})}
+                                                className="form-select"
+                                                style={{margin: 0}}
+                                            >
+                                                <option value="">— No pool assigned —</option>
+                                                {pools.map(p => <option key={p.id} value={p.id}>{p.name} — {p.address}</option>)}
+                                            </select>
+                                        </div>
+                                    )}
                                     
                                     <div style={{borderTop: '1px solid #e2e8f0', paddingTop: '0.75rem', marginTop: '0.25rem'}}>
                                         <div style={{fontSize: '0.75rem', fontWeight: 600, color: '#475569', marginBottom: '0.5rem'}}>Parent/Contact</div>
@@ -1722,7 +1791,7 @@ END:VEVENT
                 <section className="hero"><div className="hero-content"><h1>Swim for Life</h1><p className="tagline">Private Swim Lessons</p><button className="hero-button" onClick={() => handleBookingClick(null)}>Book a private lesson</button><button className="hero-button hero-button-secondary" onClick={() => { setShowAbout(a => !a); setTimeout(() => { if (!showAbout) document.getElementById('about').scrollIntoView({ behavior: 'smooth' }); }, 50); }}>About Coach Conor</button></div></section>
                 <section className={`about-section ${showAbout ? 'visible' : ''}`} id="about"><div className="about-content"><h2>About Coach Conor</h2><p>Coach Conor is a Raleigh native with a deep love of swimming and a life of experience in the sport. He currently serves as the head coach of the Wood Valley Otters, returning this year for his fifth year. He has over ten years of coaching experience working with swimmers of all ages on technique and stroke work.</p><p>When Coach Conor is not coaching in the summer, he works as a humanities teacher for middle and high schoolers at St. Thomas More Academy. He is the head coach of the school's swim team, which he started in 2015 while he was a student.</p><p>Coach Conor graduated from Hillsdale College and now lives in Knightdale with his lovely wife and daughter. During his free time, he enjoys reading, writing, and playing boardgames.</p><p className="about-certified">Coach Conor is lifeguard certified.</p></div></section>
                 <section className="pricing"><h2>Pricing</h2><div className="price-grid"><div className="price-card" onClick={() => handleBookingClick('private')}><div className="swimmers">1 Swimmer</div><div className="amount">$40</div><div className="duration">30 minutes</div><div className="click-hint">Click to book</div></div><div className="price-card" onClick={() => handleBookingClick('group')}><div className="swimmers">2 Swimmers</div><div className="amount">$70</div><div className="duration">30 minutes</div><div className="click-hint">Click to book</div></div></div></section>
-                <section className={`calendar-section ${showCalendar ? 'visible' : ''}`} id="calendar"><h2>Book Your Lesson</h2><SwimLessonCalendar {...{preselectedType, autoBookWeekly, bookedLessons, setBookedLessons, saveLessons, cancelledLessons, isDateBlocked, getFirstAvailableDate, getClosestAvailableTo, dateWindowEnd, lessonTypeUpdate, weekdayTimeSettings}} /></section>
+                <section className={`calendar-section ${showCalendar ? 'visible' : ''}`} id="calendar"><h2>Book Your Lesson</h2><SwimLessonCalendar {...{preselectedType, autoBookWeekly, bookedLessons, setBookedLessons, saveLessons, cancelledLessons, isDateBlocked, getFirstAvailableDate, getClosestAvailableTo, dateWindowEnd, lessonTypeUpdate, weekdayTimeSettings, pools, poolSettings}} /></section>
                 <footer><p>&copy; 2026 Swim for Life, LLC</p></footer>
             </>
         );

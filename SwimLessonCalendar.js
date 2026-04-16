@@ -1,4 +1,5 @@
-    const SwimLessonCalendar = ({ preselectedType, autoBookWeekly, bookedLessons, setBookedLessons, saveLessons, cancelledLessons, isDateBlocked, getFirstAvailableDate, getClosestAvailableTo, dateWindowEnd, lessonTypeUpdate, weekdayTimeSettings }) => {
+    const SwimLessonCalendar = ({ preselectedType, autoBookWeekly, bookedLessons, setBookedLessons, saveLessons, cancelledLessons, isDateBlocked, getFirstAvailableDate, getClosestAvailableTo, dateWindowEnd, lessonTypeUpdate, weekdayTimeSettings, pools, poolSettings }) => {
+        const [selectedPool, setSelectedPool] = useState('');
         const [currentDate, setCurrentDate] = useState(() => { const f = getFirstAvailableDate(); return new Date(f.getFullYear(), f.getMonth(), 1); });
         const [selectedDate, setSelectedDate] = useState(null);
         const [selectedTime, setSelectedTime] = useState('');
@@ -26,12 +27,36 @@
         const [showSuccessModal, setShowSuccessModal] = useState(false);
         const [bookedDatesForCalendar, setBookedDatesForCalendar] = useState([]);
 
-        // Helper to get lesson times for a specific weekday
+        // Helper to get lesson times for a specific weekday (uses selected pool if set)
         const getLessonTimesForDay = (dayIndex) => {
-            if (weekdayTimeSettings && weekdayTimeSettings[dayIndex] && weekdayTimeSettings[dayIndex].length > 0) {
-                return weekdayTimeSettings[dayIndex];
+            const settings = selectedPool && poolSettings && poolSettings[selectedPool]
+                ? poolSettings[selectedPool].weekdayTimeSettings
+                : weekdayTimeSettings;
+            if (settings && settings[dayIndex] && settings[dayIndex].length > 0) {
+                return settings[dayIndex];
             }
             return DEFAULT_LESSON_TIMES;
+        };
+
+        // Effective date window end: use pool-specific if available, else global
+        const effectiveDateWindowEnd = (selectedPool && poolSettings && poolSettings[selectedPool] && poolSettings[selectedPool].dateWindowEnd)
+            ? poolSettings[selectedPool].dateWindowEnd
+            : dateWindowEnd;
+
+        // Handle pool dropdown change: reset all selection state
+        const handlePoolChange = (poolId) => {
+            setSelectedPool(poolId);
+            setSelectedDate(null);
+            setSelectedTime('');
+            setShowBookingForm(false);
+            setConflictDates([]);
+            setReschedulingConflict(null);
+            setReschedulingLessonInfo(null);
+            setRescheduledLessons([]);
+            if (poolId) {
+                const firstAvail = getFirstAvailableDate(poolId);
+                setCurrentDate(new Date(firstAvail.getFullYear(), firstAvail.getMonth(), 1));
+            }
         };
 
         const getMonthData = (date) => ({ year: date.getFullYear(), month: date.getMonth(), firstDay: new Date(date.getFullYear(), date.getMonth(), 1).getDay(), daysInMonth: new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate() });
@@ -202,7 +227,7 @@
 
         const countWeeklyLessons = (startDate, time) => {
             let count = 0;
-            const endDate = dateWindowEnd ? new Date(dateWindowEnd) : null;
+            const endDate = effectiveDateWindowEnd ? new Date(effectiveDateWindowEnd) : null;
             for (let i = 0; i < 12; i++) {
                 const lessonDate = new Date(startDate.year, startDate.month, startDate.day);
                 lessonDate.setDate(lessonDate.getDate() + i * 7);
@@ -215,7 +240,7 @@
 
         const getLastLessonDate = (startDate, time) => {
             let lastDate = new Date(startDate.year, startDate.month, startDate.day);
-            const endDate = dateWindowEnd ? new Date(dateWindowEnd) : null;
+            const endDate = effectiveDateWindowEnd ? new Date(effectiveDateWindowEnd) : null;
             for (let i = 0; i < 12; i++) {
                 const lessonDate = new Date(startDate.year, startDate.month, startDate.day);
                 lessonDate.setDate(lessonDate.getDate() + i * 7);
@@ -226,10 +251,10 @@
         };
 
         useEffect(() => {
-            if (preselectedType && !hasAutoSelected) {
+            if (preselectedType && selectedPool && !hasAutoSelected) {
                 setFormData(prev => ({ ...prev, lessonType: preselectedType }));
                 if (autoBookWeekly) setBookingType('weekly');
-                const firstAvailable = getFirstAvailableDate();
+                const firstAvailable = getFirstAvailableDate(selectedPool);
                 setCurrentDate(new Date(firstAvailable.getFullYear(), firstAvailable.getMonth(), 1));
                 const selDate = { year: firstAvailable.getFullYear(), month: firstAvailable.getMonth(), day: firstAvailable.getDate() };
                 const availTime = getAvailableTimes(selDate)[0] || '';
@@ -238,7 +263,7 @@
                 setShowBookingForm(true);
                 setHasAutoSelected(true);
             }
-        }, [preselectedType, autoBookWeekly, hasAutoSelected]);
+        }, [preselectedType, autoBookWeekly, hasAutoSelected, selectedPool]);
 
         const handleDateSelect = (year, month, day) => {
             const selDate = { year, month, day };
@@ -278,11 +303,11 @@
 
         const checkWeeklyConflicts = (year, month, day, time) => {
             const conflicts = [], startDate = new Date(year, month, day);
-            const endDate = dateWindowEnd ? new Date(dateWindowEnd) : null;
+            const endDate = effectiveDateWindowEnd ? new Date(effectiveDateWindowEnd) : null;
             for (let i = 0; i < 12; i++) {
                 const lessonDate = new Date(startDate); lessonDate.setDate(lessonDate.getDate() + i * 7);
                 if (endDate && lessonDate > endDate) break;
-                const dateKey = formatDateKey(lessonDate), booked = getActiveLessons(dateKey), blocked = isDateBlocked(lessonDate.getFullYear(), lessonDate.getMonth(), lessonDate.getDate());
+                const dateKey = formatDateKey(lessonDate), booked = getActiveLessons(dateKey), blocked = isDateBlocked(lessonDate.getFullYear(), lessonDate.getMonth(), lessonDate.getDate(), selectedPool);
                 const dayOfWeek = lessonDate.getDay();
                 const maxForDay = getLessonTimesForDay(dayOfWeek).length;
                 if (blocked || booked.some(l => l.time === time) || booked.length >= maxForDay) conflicts.push({ date: lessonDate, dateString: lessonDate.toLocaleDateString(), dateKey });
@@ -293,7 +318,7 @@
         const bookWeeklyLesson = (year, month, day, time, lessonInfo) => {
             const conflicts = checkWeeklyConflicts(year, month, day, time);
             const conflictKeys = new Set(conflicts.map(c => c.dateKey));
-            const endDate = dateWindowEnd ? new Date(dateWindowEnd) : null;
+            const endDate = effectiveDateWindowEnd ? new Date(effectiveDateWindowEnd) : null;
             setReschedulingLessonInfo(lessonInfo);
             
             // Batch all lessons into a single update
@@ -432,9 +457,9 @@ END:VEVENT
 
         const confirmBooking = () => {
             setShowConfirmModal(false);
-            const lessonInfo = { time: selectedTime, parentName: formData.parentName, swimmer1Name: formData.swimmer1Name, swimmer1Birthday: formData.swimmer1Birthday, email: formData.email, phone: formData.phone, lessonType: formData.lessonType, price: formData.lessonType === 'private' ? 40 : 70 };
+            const lessonInfo = { time: selectedTime, parentName: formData.parentName, swimmer1Name: formData.swimmer1Name, swimmer1Birthday: formData.swimmer1Birthday, email: formData.email, phone: formData.phone, lessonType: formData.lessonType, price: formData.lessonType === 'private' ? 40 : 70, poolId: selectedPool };
             if (formData.lessonType === 'group') { lessonInfo.swimmer2Name = formData.swimmer2Name; lessonInfo.swimmer2Birthday = formData.swimmer2Birthday; }
-            
+
             if (bookingType === 'single') {
                 const singleDate = [{ year: selectedDate.year, month: selectedDate.month, day: selectedDate.day, time: selectedTime }];
                 bookLesson(selectedDate.year, selectedDate.month, selectedDate.day, selectedTime, lessonInfo);
@@ -446,7 +471,7 @@ END:VEVENT
                 const bookedDates = [];
                 const conflicts = checkWeeklyConflicts(selectedDate.year, selectedDate.month, selectedDate.day, selectedTime);
                 const conflictKeys = new Set(conflicts.map(c => c.dateKey));
-                const endDate = dateWindowEnd ? new Date(dateWindowEnd) : null;
+                const endDate = effectiveDateWindowEnd ? new Date(effectiveDateWindowEnd) : null;
                 
                 for (let i = 0; i < 12; i++) {
                     const lessonDate = new Date(selectedDate.year, selectedDate.month, selectedDate.day);
@@ -491,7 +516,7 @@ END:VEVENT
             const conflict = conflictDates[currentConflictIndex];
             setReschedulingConflict(conflict);
             setShowConflictModal(false);
-            const closest = getClosestAvailableTo ? getClosestAvailableTo(conflict.date) : null;
+            const closest = getClosestAvailableTo ? getClosestAvailableTo(conflict.date, selectedPool) : null;
             if (closest) {
                 setCurrentDate(new Date(closest.year, closest.month, 1));
                 setSelectedDate({ year: closest.year, month: closest.month, day: closest.day });
@@ -596,6 +621,28 @@ END:VEVENT
 
         return (
             <div className="calendar-container">
+                {/* Pool selector — must be chosen before date/time */}
+                {pools && pools.length > 0 && (
+                    <div className="form-group" style={{marginBottom: '1.5rem'}}>
+                        <label style={{fontWeight: 600, color: '#1e40af', marginBottom: '0.5rem', display: 'block'}}>Select a Pool *</label>
+                        <select
+                            value={selectedPool}
+                            onChange={(e) => handlePoolChange(e.target.value)}
+                            className="form-select"
+                        >
+                            <option value="">— Choose a pool to see availability —</option>
+                            {pools.map(p => (
+                                <option key={p.id} value={p.id}>{p.name}{p.address ? ` — ${p.address}` : ''}</option>
+                            ))}
+                        </select>
+                        {!selectedPool && (
+                            <p style={{fontSize: '0.875rem', color: '#64748b', marginTop: '0.5rem'}}>Please select a pool above to view available dates and times.</p>
+                        )}
+                    </div>
+                )}
+
+                {/* Calendar (only shown once a pool is selected, or if no pools configured yet) */}
+                {(selectedPool || !pools || pools.length === 0) && <>
                 <div className="calendar-header"><button onClick={() => setCurrentDate(new Date(year, month - 1, 1))} className="nav-btn"><ChevronLeft /></button><h3>{monthName} {year}</h3><button onClick={() => setCurrentDate(new Date(year, month + 1, 1))} className="nav-btn"><ChevronRight /></button></div>
                 <div className="weekdays">{DAYS.map(d => <div key={d} className="weekday">{d}</div>)}</div>
                 <div className="days-grid">
@@ -605,7 +652,7 @@ END:VEVENT
                         const todayDate = new Date(); todayDate.setHours(0,0,0,0);
                         const isPast = date < todayDate;
                         const isTodayDate = date.getFullYear() === todayDate.getFullYear() && date.getMonth() === todayDate.getMonth() && date.getDate() === todayDate.getDate();
-                        const blocked = isDateBlocked(year, month, day);
+                        const blocked = isDateBlocked(year, month, day, selectedPool);
                         const isConflictDay = reschedulingConflict && reschedulingConflict.date.getFullYear() === year && reschedulingConflict.date.getMonth() === month && reschedulingConflict.date.getDate() === day;
                         const isSelected = selectedDate && selectedDate.year === year && selectedDate.month === month && selectedDate.day === day;
                         
@@ -771,6 +818,7 @@ END:VEVENT
                 {showConfirmModal && (
                     <div className="modal-overlay"><div className="modal"><h4>Confirm Booking</h4><p style={{marginBottom: '1rem', color: '#64748b'}}>Please review the information below before confirming.</p>
                         <div className="confirm-details">
+                            {selectedPool && pools && pools.find(p => p.id === selectedPool) && (() => { const pool = pools.find(p => p.id === selectedPool); return <div className="confirm-row"><span className="confirm-label">Pool</span><span className="confirm-value">{pool.name}{pool.address && <><br/><span style={{fontSize: '0.8em', color: '#64748b'}}>{pool.address}</span></>}</span></div>; })()}
                             <div className="confirm-row"><span className="confirm-label">Booking Type</span><span className="confirm-value">{bookingType === 'weekly' ? `Weekly (${weeklyCount} lessons)` : 'Single Lesson'}</span></div>
                             <div className="confirm-row"><span className="confirm-label">Start Date</span><span className="confirm-value">{startDateStr}</span></div>
                             {bookingType === 'weekly' && lastLessonDate && <div className="confirm-row"><span className="confirm-label">End Date</span><span className="confirm-value">{endDateStr}</span></div>}
@@ -856,6 +904,7 @@ END:VEVENT
                 )}
 
                 <div className="legend"><div className="legend-item"><div className="legend-bar" style={{background: '#cbd5e1'}}></div><span>Booked</span></div><div className="legend-item"><div className="legend-bar" style={{background: '#93c5fd'}}></div><span>Available</span></div></div>
+                </> /* end pool-gated calendar section */}
             </div>
         );
     };

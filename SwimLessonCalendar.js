@@ -652,7 +652,7 @@ END:VEVENT
                 {/* Calendar (only shown once a pool is selected, or if no pools configured yet) */}
                 {(selectedPool || !pools || pools.length === 0) && <>
                 <div className="calendar-header"><button onClick={() => setCurrentDate(new Date(year, month - 1, 1))} className="nav-btn"><ChevronLeft /></button><h3>{monthName} {year}</h3><button onClick={() => setCurrentDate(new Date(year, month + 1, 1))} className="nav-btn"><ChevronRight /></button></div>
-                <div className="weekdays">{DAYS.map(d => <div key={d} className="weekday">{d}</div>)}</div>
+                <div className="weekdays">{DAYS.map((d, i) => <div key={d} className={`weekday${getLessonTimesForDay(i).length === 0 ? ' blocked' : ''}`}>{d}</div>)}</div>
                 <div className="days-grid">
                     {[...Array(firstDay)].map((_, i) => <div key={`e-${i}`} className="day-cell empty" />)}
                     {[...Array(daysInMonth)].map((_, i) => {

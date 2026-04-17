@@ -723,7 +723,7 @@ END:VEVENT
                         {/* Returning User Lookup */}
                         <div style={{background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '10px', padding: '1rem', marginBottom: '1rem'}}>
                             <div style={{fontSize: '0.875rem', fontWeight: 600, color: '#0369a1', marginBottom: '0.5rem'}}>🔄 Returning swimmer? Look up your info by entering your email.</div>
-                            <div style={{display: 'flex', gap: '0.5rem', alignItems: 'flex-start'}}>
+                            <div className="lookup-row">
                                 <div style={{flex: 1}}>
                                     <input 
                                         type="email" 

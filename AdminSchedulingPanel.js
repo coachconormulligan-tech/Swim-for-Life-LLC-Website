@@ -1,4 +1,4 @@
-    const AdminSchedulingPanel = ({ blockedDates, blockedWeekdays, dateWindowStart, dateWindowEnd, handleStartDateChange, handleEndDateChange, setDateWindowStart, setDateWindowEnd, toggleBlockedDate, toggleBlockedWeekday, isDateBlocked, bookedLessons, cancelledLessons, firstAvailableDate, saveSettings, weekdayTimeSettings, setWeekdayTimeSettings, pools, setPools, poolSettings, setPoolSettings, savePools, savePoolSettings, poolSaveError, setPoolSaveError }) => {
+    const AdminSchedulingPanel = ({ blockedDates, blockedWeekdays, dateWindowStart, dateWindowEnd, handleStartDateChange, handleEndDateChange, setDateWindowStart, setDateWindowEnd, toggleBlockedDate, toggleBlockedWeekday, isDateBlocked, bookedLessons, cancelledLessons, firstAvailableDate, saveSettings, weekdayTimeSettings, setWeekdayTimeSettings, dateTimeSettings, setDateTimeSettings, pools, setPools, poolSettings, setPoolSettings, savePools, savePoolSettings, poolSaveError, setPoolSaveError }) => {
         const [currentDate, setCurrentDate] = useState(new Date(firstAvailableDate.getFullYear(), firstAvailableDate.getMonth(), 1));
         const [editingWeekday, setEditingWeekday] = useState(null);
         const [tempTimes, setTempTimes] = useState([]);
@@ -15,6 +15,11 @@
         const [editPoolAddress, setEditPoolAddress] = useState('');
         const [showDeletePoolConfirm, setShowDeletePoolConfirm] = useState(false);
         const [deletingPool, setDeletingPool] = useState(null);
+        // Per-date editor state
+        const [editingDate, setEditingDate] = useState(null); // { year, month, day, dateKey }
+        const [dateEditTimes, setDateEditTimes] = useState([]);
+        const [dateEditCustomize, setDateEditCustomize] = useState(false);
+        const [dateEditBlocked, setDateEditBlocked] = useState(false);
         const getMonthData = (date) => ({ year: date.getFullYear(), month: date.getMonth(), firstDay: new Date(date.getFullYear(), date.getMonth(), 1).getDay(), daysInMonth: new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate() });
         const getActiveLessons = (dateKey) => (bookedLessons[dateKey] || []).filter(l => !cancelledLessons.has(`${dateKey}-${l.time}`));
         const { year, month, firstDay, daysInMonth } = getMonthData(currentDate);
@@ -127,35 +132,14 @@
             setPendingEditDay(null);
         };
 
-        // Check if any date on a weekday is blocked within the window, or if no times configured
+        // Weekday header is red only when that day has no time slots configured
         const isWeekdayBlocked = (dayIndex) => {
-            if (selectedAdminPool && poolSettings && poolSettings[selectedAdminPool]) {
-                const ps = poolSettings[selectedAdminPool];
-                const dayTimes = ps.weekdayTimeSettings && ps.weekdayTimeSettings[dayIndex];
-                if (dayTimes && dayTimes.length === 0) return true;
-                const start = ps.dateWindowStart ? new Date(ps.dateWindowStart) : null;
-                const end = ps.dateWindowEnd ? new Date(ps.dateWindowEnd) : null;
-                if (!start || !end) return false;
-                for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-                    if (d.getDay() === dayIndex) {
-                        const dateKey = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-                        if ((ps.blockedDates || []).includes(dateKey)) return true;
-                    }
-                }
-                return false;
-            }
-            // Fall back to global settings
-            const dayTimes = weekdayTimeSettings[dayIndex];
-            if (dayTimes && dayTimes.length === 0) return true;
-            if (!dateWindowStart || !dateWindowEnd) return false;
-            const start = new Date(dateWindowStart);
-            const end = new Date(dateWindowEnd);
-            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-                if (d.getDay() === dayIndex) {
-                    const dateKey = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-                    if (blockedDates.has(dateKey)) return true;
-                }
-            }
+            const source = selectedAdminPool && poolSettings && poolSettings[selectedAdminPool]
+                ? (poolSettings[selectedAdminPool].weekdayTimeSettings || {})
+                : weekdayTimeSettings;
+            const dayTimes = source[dayIndex];
+            if (dayTimes !== undefined && dayTimes.length === 0) return true;
+            if (!selectedAdminPool && blockedWeekdays && blockedWeekdays.has(dayIndex)) return true;
             return false;
         };
 
@@ -197,6 +181,88 @@
                 const cur = poolData?.blockedDates || [];
                 updatePoolSetting('blockedDates', cur.includes(dateKey) ? cur.filter(d => d !== dateKey) : [...cur, dateKey]);
             } else { toggleBlockedDate(dateKey); }
+        };
+
+        // Per-date override helpers
+        const effDateOverrides = poolData ? (poolData.dateTimeSettings || {}) : (dateTimeSettings || {});
+        const effBlockedDatesList = poolData ? (poolData.blockedDates || []) : null; // null means use global Set
+
+        const writeDateOverrides = (newOverrides) => {
+            if (selectedAdminPool) {
+                const cur = poolSettings && poolSettings[selectedAdminPool] ? poolSettings[selectedAdminPool] : {};
+                const newPs = { ...(poolSettings || {}), [selectedAdminPool]: { ...cur, dateTimeSettings: newOverrides } };
+                setPoolSettings(newPs); savePoolSettings(newPs);
+            } else {
+                setDateTimeSettings(newOverrides);
+                saveSettings(blockedDates, blockedWeekdays, dateWindowStart, dateWindowEnd, weekdayTimeSettings, newOverrides);
+            }
+        };
+
+        const setDateBlockedFlag = (dateKey, blocked) => {
+            if (selectedAdminPool) {
+                const cur = poolData?.blockedDates || [];
+                const next = blocked ? (cur.includes(dateKey) ? cur : [...cur, dateKey]) : cur.filter(d => d !== dateKey);
+                updatePoolSetting('blockedDates', next);
+            } else {
+                const newBlocked = new Set(blockedDates);
+                if (blocked) newBlocked.add(dateKey); else newBlocked.delete(dateKey);
+                // Use existing flow to catch "cancel existing lessons" confirmation when blocking
+                if (blocked && !blockedDates.has(dateKey)) {
+                    toggleBlockedDate(dateKey);
+                } else if (!blocked && blockedDates.has(dateKey)) {
+                    toggleBlockedDate(dateKey);
+                }
+            }
+        };
+
+        const openDateEditor = (year, month, day) => {
+            const dateKey = `${year}-${month}-${day}`;
+            const hasOverride = Object.prototype.hasOwnProperty.call(effDateOverrides, dateKey);
+            const current = hasOverride
+                ? effDateOverrides[dateKey]
+                : (effWeekdayTimes[new Date(year, month, day).getDay()] !== undefined
+                    ? effWeekdayTimes[new Date(year, month, day).getDay()]
+                    : [...DEFAULT_LESSON_TIMES]);
+            const blockedNow = selectedAdminPool
+                ? (poolData?.blockedDates || []).includes(dateKey)
+                : blockedDates.has(dateKey);
+            setEditingDate({ year, month, day, dateKey });
+            setDateEditBlocked(blockedNow);
+            setDateEditCustomize(hasOverride);
+            setDateEditTimes([...current]);
+        };
+
+        const closeDateEditor = () => { setEditingDate(null); setDateEditTimes([]); setDateEditCustomize(false); setDateEditBlocked(false); };
+
+        const saveDateEditor = () => {
+            if (!editingDate) return;
+            const { dateKey } = editingDate;
+            // Handle block/unblock
+            setDateBlockedFlag(dateKey, dateEditBlocked);
+            // Handle per-date time override
+            const newOverrides = { ...effDateOverrides };
+            if (dateEditCustomize) {
+                newOverrides[dateKey] = [...dateEditTimes];
+            } else {
+                delete newOverrides[dateKey];
+            }
+            writeDateOverrides(newOverrides);
+            closeDateEditor();
+        };
+
+        const resetDateEditor = () => {
+            if (!editingDate) return;
+            const newOverrides = { ...effDateOverrides };
+            delete newOverrides[editingDate.dateKey];
+            writeDateOverrides(newOverrides);
+            setDateEditBlocked(false);
+            if (selectedAdminPool) {
+                const cur = poolData?.blockedDates || [];
+                if (cur.includes(editingDate.dateKey)) updatePoolSetting('blockedDates', cur.filter(d => d !== editingDate.dateKey));
+            } else {
+                if (blockedDates.has(editingDate.dateKey)) toggleBlockedDate(editingDate.dateKey);
+            }
+            closeDateEditor();
         };
 
         return (
@@ -297,7 +363,7 @@
                     </div>
                 </div>
 
-                <div className="admin-calendar-instructions"><strong>How to use:</strong><ul><li><strong>Click a day name</strong> to block/unblock ALL of that weekday within the window</li><li><strong>Click a specific date</strong> to block/unblock just that day</li><li>If a day has lessons, you'll be asked to confirm cancellation</li></ul></div>
+                <div className="admin-calendar-instructions"><strong>How to use:</strong><ul><li><strong>Click a day name</strong> to block/unblock ALL of that weekday within the window</li><li><strong>Click a specific date</strong> to block/unblock it and/or customize its time slots for that date only</li><li>If a day has lessons, you'll be asked to confirm cancellation</li></ul></div>
                 <div className="calendar-container" style={{boxShadow: 'none', border: '1px solid #e2e8f0'}}>
                     <div className="calendar-header"><button onClick={() => setCurrentDate(new Date(year, month - 1, 1))} className="nav-btn"><ChevronLeft /></button><h3>{monthName} {year}</h3><button onClick={() => setCurrentDate(new Date(year, month + 1, 1))} className="nav-btn"><ChevronRight /></button></div>
                     <div className="weekdays">{DAYS.map((day, i) => <div key={day} className={`weekday ${selectedAdminPool ? '' : 'clickable'} ${isWeekdayBlocked(i) ? 'blocked' : ''}`} onClick={() => !selectedAdminPool && toggleBlockedWeekday(i)}>{day}</div>)}</div>
@@ -309,8 +375,9 @@
                             const isSpecBlk = effBlockedDatesSet.has(dateKey);
                             const isOutWin = isDateBlocked(year, month, day, selectedAdminPool || null) && !isSpecBlk;
                             const bookedCount = getActiveLessons(dateKey).length;
+                            const hasOverride = Object.prototype.hasOwnProperty.call(effDateOverrides, dateKey);
                             let cn = 'day-cell'; if (isPast) cn += ' past'; if (isSpecBlk) cn += ' admin-blocked'; if (isOutWin) cn += ' blocked';
-                            return <div key={day} onClick={() => !isPast && toggleEffectiveBlockedDate(dateKey)} className={cn}><div className="day-number">{day}</div>{!isPast && bookedCount > 0 && <div className="slots-container">{[...Array(bookedCount)].map((_, j) => <div key={j} className="slot-bar booked" />)}</div>}{isSpecBlk && !isPast && <div style={{fontSize: '0.65rem', color: '#dc2626', marginTop: '2px'}}>Blocked</div>}</div>;
+                            return <div key={day} onClick={() => !isPast && openDateEditor(year, month, day)} className={cn}><div className="day-number">{day}</div>{!isPast && bookedCount > 0 && <div className="slots-container">{[...Array(bookedCount)].map((_, j) => <div key={j} className="slot-bar booked" />)}</div>}{isSpecBlk && !isPast && <div style={{fontSize: '0.65rem', color: '#dc2626', marginTop: '2px'}}>Blocked</div>}{hasOverride && !isSpecBlk && !isPast && <div style={{fontSize: '0.6rem', color: '#7c3aed', marginTop: '2px', fontWeight: 600}}>Custom</div>}</div>;
                         })}
                     </div>
                     <div className="legend" style={{marginTop: '1.5rem'}}><div className="legend-item"><div className="legend-box" style={{background: '#fee2e2', borderColor: '#fecaca'}}></div><span>Blocked</span></div><div className="legend-item"><div className="legend-bar" style={{background: '#cbd5e1'}}></div><span>Booked</span></div></div>
@@ -458,6 +525,91 @@
                         </div>
                     </div>
                 )}
+
+                {editingDate && (() => {
+                    const { year, month, day, dateKey } = editingDate;
+                    const dow = new Date(year, month, day).getDay();
+                    const weekdayDefault = effWeekdayTimes[dow] !== undefined ? effWeekdayTimes[dow] : DEFAULT_LESSON_TIMES;
+                    const dateLabel = new Date(year, month, day).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+                    const lessonsOnDate = getActiveLessons(dateKey).filter(l => !selectedAdminPool || l.poolId === selectedAdminPool);
+                    return (
+                        <div className="modal-overlay">
+                            <div className="modal" style={{maxWidth: '560px'}}>
+                                <h4 style={{color: '#1e40af', margin: 0}}>Edit {dateLabel}</h4>
+                                {lessonsOnDate.length > 0 && (
+                                    <div style={{background: '#fef3c7', border: '1px solid #fde68a', borderRadius: '8px', padding: '0.5rem 0.75rem', marginTop: '0.75rem', fontSize: '0.8rem', color: '#92400e'}}>
+                                        {lessonsOnDate.length} lesson{lessonsOnDate.length !== 1 ? 's' : ''} booked on this date. Removing a time slot with an active booking may cause issues.
+                                    </div>
+                                )}
+
+                                <div style={{marginTop: '1rem', padding: '0.75rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0'}}>
+                                    <label style={{display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', cursor: 'pointer'}}>
+                                        <input type="checkbox" checked={dateEditBlocked} onChange={(e) => setDateEditBlocked(e.target.checked)} />
+                                        <span style={{fontWeight: 600, color: '#1e293b'}}>Block this date entirely</span>
+                                    </label>
+                                    <p style={{fontSize: '0.75rem', color: '#64748b', margin: '0.25rem 0 0 1.5rem'}}>No bookings will be allowed on this day.</p>
+                                </div>
+
+                                <div style={{marginTop: '0.75rem', padding: '0.75rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', opacity: dateEditBlocked ? 0.5 : 1}}>
+                                    <label style={{display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', cursor: dateEditBlocked ? 'not-allowed' : 'pointer'}}>
+                                        <input type="checkbox" disabled={dateEditBlocked} checked={dateEditCustomize} onChange={(e) => {
+                                            const on = e.target.checked;
+                                            setDateEditCustomize(on);
+                                            if (on && dateEditTimes.length === 0) setDateEditTimes([...weekdayDefault]);
+                                        }} />
+                                        <span style={{fontWeight: 600, color: '#1e293b'}}>Customize time slots for this date only</span>
+                                    </label>
+                                    <p style={{fontSize: '0.75rem', color: '#64748b', margin: '0.25rem 0 0.5rem 1.5rem'}}>
+                                        {dateEditCustomize
+                                            ? `Overriding the weekday default (${weekdayDefault.length} slot${weekdayDefault.length !== 1 ? 's' : ''}).`
+                                            : `Using the weekday default: ${weekdayDefault.length > 0 ? weekdayDefault.join(', ') : 'No slots'}.`}
+                                    </p>
+
+                                    {dateEditCustomize && !dateEditBlocked && (
+                                        <div style={{marginTop: '0.5rem'}}>
+                                            <label style={{fontSize: '0.75rem', fontWeight: 500, color: '#475569', marginBottom: '0.5rem', display: 'block'}}>Selected Times (in order):</label>
+                                            {dateEditTimes.length === 0 ? (
+                                                <p style={{fontSize: '0.75rem', color: '#94a3b8', fontStyle: 'italic'}}>No times selected — this date will be blocked.</p>
+                                            ) : (
+                                                <div style={{display: 'flex', flexWrap: 'wrap', gap: '0.5rem'}}>
+                                                    {dateEditTimes.map((time, idx) => (
+                                                        <div key={time} style={{display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.375rem 0.5rem', background: '#dbeafe', borderRadius: '6px', fontSize: '0.75rem', color: '#1e40af'}}>
+                                                            <span style={{fontWeight: 600, color: '#64748b', marginRight: '0.25rem'}}>{idx + 1}.</span>
+                                                            {time}
+                                                            <div style={{display: 'flex', flexDirection: 'column', marginLeft: '0.25rem'}}>
+                                                                {idx > 0 && <button onClick={() => { const t=[...dateEditTimes]; [t[idx],t[idx-1]]=[t[idx-1],t[idx]]; setDateEditTimes(t); }} style={{background:'none',border:'none',cursor:'pointer',padding:0,lineHeight:1,fontSize:'0.625rem'}}>▲</button>}
+                                                                {idx < dateEditTimes.length - 1 && <button onClick={() => { const t=[...dateEditTimes]; [t[idx],t[idx+1]]=[t[idx+1],t[idx]]; setDateEditTimes(t); }} style={{background:'none',border:'none',cursor:'pointer',padding:0,lineHeight:1,fontSize:'0.625rem'}}>▼</button>}
+                                                            </div>
+                                                            <button onClick={() => setDateEditTimes(dateEditTimes.filter(t => t !== time))} style={{background:'none',border:'none',cursor:'pointer',color:'#dc2626',fontWeight:'bold',marginLeft:'0.25rem',fontSize:'0.875rem'}}>×</button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            <label style={{fontSize: '0.75rem', fontWeight: 500, color: '#475569', margin: '0.75rem 0 0.5rem', display: 'block'}}>Available Times (click to add):</label>
+                                            <div style={{display: 'flex', flexWrap: 'wrap', gap: '0.375rem'}}>
+                                                {ALL_LESSON_TIMES.filter(t => !dateEditTimes.includes(t)).map(time => (
+                                                    <button key={time} onClick={() => setDateEditTimes([...dateEditTimes, time])} style={{padding: '0.375rem 0.625rem', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', color: '#475569', fontFamily: 'inherit'}}>{time}</button>
+                                                ))}
+                                            </div>
+
+                                            <div style={{marginTop: '0.75rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap'}}>
+                                                <button onClick={() => setDateEditTimes([...weekdayDefault])} style={{padding: '0.375rem 0.625rem', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit'}}>Use Weekday Default</button>
+                                                <button onClick={() => setDateEditTimes([])} style={{padding: '0.375rem 0.625rem', background: '#fee2e2', border: '1px solid #fecaca', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', color: '#dc2626', fontFamily: 'inherit'}}>Clear All</button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="btn-row" style={{marginTop: '1.25rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap'}}>
+                                    <button onClick={saveDateEditor} className="btn btn-primary">Save</button>
+                                    <button onClick={resetDateEditor} className="btn btn-secondary">Reset to Weekday Default</button>
+                                    <button onClick={closeDateEditor} className="btn btn-secondary">Cancel</button>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })()}
 
                 {showDeletePoolConfirm && deletingPool && (
                     <div className="modal-overlay">

@@ -1,4 +1,4 @@
-    const SwimLessonCalendar = ({ preselectedType, autoBookWeekly, bookedLessons, setBookedLessons, saveLessons, cancelledLessons, isDateBlocked, getFirstAvailableDate, getClosestAvailableTo, dateWindowEnd, lessonTypeUpdate, weekdayTimeSettings, pools, poolSettings }) => {
+    const SwimLessonCalendar = ({ preselectedType, autoBookWeekly, bookedLessons, setBookedLessons, saveLessons, cancelledLessons, isDateBlocked, getFirstAvailableDate, getClosestAvailableTo, dateWindowEnd, lessonTypeUpdate, weekdayTimeSettings, dateTimeSettings, pools, poolSettings }) => {
         const [selectedPool, setSelectedPool] = useState('');
         const [currentDate, setCurrentDate] = useState(() => { const f = getFirstAvailableDate(); return new Date(f.getFullYear(), f.getMonth(), 1); });
         const [selectedDate, setSelectedDate] = useState(null);
@@ -36,6 +36,16 @@
                 return settings[dayIndex];
             }
             return DEFAULT_LESSON_TIMES;
+        };
+
+        // Per-date override wins over weekday setting. Empty array = blocked.
+        const getLessonTimesForDate = (year, month, day) => {
+            const dateKey = `${year}-${month}-${day}`;
+            const overrides = selectedPool && poolSettings && poolSettings[selectedPool]
+                ? (poolSettings[selectedPool].dateTimeSettings || {})
+                : (dateTimeSettings || {});
+            if (Object.prototype.hasOwnProperty.call(overrides, dateKey)) return overrides[dateKey];
+            return getLessonTimesForDay(new Date(year, month, day).getDay());
         };
 
         // Effective date window end: use pool-specific if available, else global
@@ -220,8 +230,7 @@
             if (!selDate) return [];
             const dateKey = `${selDate.year}-${selDate.month}-${selDate.day}`;
             const bookedTimes = getActiveLessons(dateKey).map(l => l.time);
-            const dayOfWeek = new Date(selDate.year, selDate.month, selDate.day).getDay();
-            const dayTimes = getLessonTimesForDay(dayOfWeek);
+            const dayTimes = getLessonTimesForDate(selDate.year, selDate.month, selDate.day);
             return dayTimes.filter(t => !bookedTimes.includes(t)).slice(0, 2);
         };
 
@@ -292,8 +301,7 @@
         const bookLesson = (year, month, day, time, lessonInfo) => {
             const dateKey = `${year}-${month}-${day}`;
             const current = getActiveLessons(dateKey);
-            const dayOfWeek = new Date(year, month, day).getDay();
-            const maxForDay = getLessonTimesForDay(dayOfWeek).length;
+            const maxForDay = getLessonTimesForDate(year, month, day).length;
             if (current.length < maxForDay && !current.some(l => l.time === time)) {
                 const newLessons = { ...bookedLessons, [dateKey]: [...(bookedLessons[dateKey] || []), lessonInfo || { time }] };
                 setBookedLessons(newLessons);
@@ -308,8 +316,7 @@
                 const lessonDate = new Date(startDate); lessonDate.setDate(lessonDate.getDate() + i * 7);
                 if (endDate && lessonDate > endDate) break;
                 const dateKey = formatDateKey(lessonDate), booked = getActiveLessons(dateKey), blocked = isDateBlocked(lessonDate.getFullYear(), lessonDate.getMonth(), lessonDate.getDate(), selectedPool);
-                const dayOfWeek = lessonDate.getDay();
-                const maxForDay = getLessonTimesForDay(dayOfWeek).length;
+                const maxForDay = getLessonTimesForDate(lessonDate.getFullYear(), lessonDate.getMonth(), lessonDate.getDate()).length;
                 if (blocked || booked.some(l => l.time === time) || booked.length >= maxForDay) conflicts.push({ date: lessonDate, dateString: lessonDate.toLocaleDateString(), dateKey });
             }
             return conflicts;
@@ -330,8 +337,7 @@
                 const dateKey = formatDateKey(lessonDate);
                 if (!conflictKeys.has(dateKey)) {
                     const current = (newLessons[dateKey] || []).filter(l => !cancelledLessons.has(`${dateKey}-${l.time}`));
-                    const dayOfWeek = lessonDate.getDay();
-                    const maxForDay = getLessonTimesForDay(dayOfWeek).length;
+                    const maxForDay = getLessonTimesForDate(lessonDate.getFullYear(), lessonDate.getMonth(), lessonDate.getDate()).length;
                     if (current.length < maxForDay && !current.some(l => l.time === time)) {
                         newLessons = { ...newLessons, [dateKey]: [...(newLessons[dateKey] || []), lessonInfo] };
                     }
@@ -488,8 +494,7 @@ END:VEVENT
                     const dateKey = `${lessonDate.getFullYear()}-${lessonDate.getMonth()}-${lessonDate.getDate()}`;
                     if (!conflictKeys.has(dateKey)) {
                         const current = (bookedLessons[dateKey] || []).filter(l => !cancelledLessons.has(`${dateKey}-${l.time}`));
-                        const dayOfWeek = lessonDate.getDay();
-                        const maxForDay = getLessonTimesForDay(dayOfWeek).length;
+                        const maxForDay = getLessonTimesForDate(lessonDate.getFullYear(), lessonDate.getMonth(), lessonDate.getDate()).length;
                         if (current.length < maxForDay && !current.some(l => l.time === selectedTime)) {
                             bookedDates.push({ year: lessonDate.getFullYear(), month: lessonDate.getMonth(), day: lessonDate.getDate(), time: selectedTime });
                         }
@@ -678,7 +683,7 @@ END:VEVENT
                         
                         // Only count active (non-cancelled) lessons at the selected pool
                         const bookedCount = getActiveLessons(dateKey).filter(l => !selectedPool || l.poolId === selectedPool).length;
-                        const maxForDay = getLessonTimesForDay(date.getDay()).length;
+                        const maxForDay = getLessonTimesForDate(year, month, day).length;
                         const totalBars = Math.min(bookedCount + 1, maxForDay);
                         
                         let cn = 'day-cell';

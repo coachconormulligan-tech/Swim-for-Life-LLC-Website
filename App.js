@@ -31,6 +31,8 @@
         const [editingNote, setEditingNote] = useState('');
         // Per-weekday time settings: { 0: ['4:00 PM', '3:30 PM'], 1: [...], ... }
         const [weekdayTimeSettings, setWeekdayTimeSettings] = useState({});
+        // Per-date time overrides (global): { 'Y-M-D': ['10:00 AM', ...] }. Empty array = blocked.
+        const [dateTimeSettings, setDateTimeSettings] = useState({});
         // Pools and per-pool settings
         const [pools, setPools] = useState([]);
         const [poolSettings, setPoolSettings] = useState({});
@@ -50,6 +52,16 @@
                 return settings[dayIndex];
             }
             return DEFAULT_LESSON_TIMES;
+        };
+
+        // Helper to get lesson times for a specific calendar date. Per-date override (if any) wins over weekday settings.
+        const getLessonTimesForDate = (year, month, day, poolId = null) => {
+            const dateKey = `${year}-${month}-${day}`;
+            const overrides = poolId && poolSettings[poolId] ? (poolSettings[poolId].dateTimeSettings || {}) : dateTimeSettings;
+            if (overrides && Object.prototype.hasOwnProperty.call(overrides, dateKey)) {
+                return overrides[dateKey];
+            }
+            return getLessonTimesForDay(new Date(year, month, day).getDay(), poolId);
         };
 
         // Pool lookup helpers
@@ -94,6 +106,7 @@
                         setDateWindowStart(s.dateWindowStart || '');
                         setDateWindowEnd(s.dateWindowEnd || '');
                         setWeekdayTimeSettings(s.weekdayTimeSettings || {});
+                        setDateTimeSettings(s.dateTimeSettings || {});
                     }
                     
                     const notesDoc = await db.collection('swimLessons').doc('studentNotes').get();
@@ -123,18 +136,19 @@
             try { await db.collection('swimLessons').doc('cancelled').set({ data: Array.from(cancelled) }); } 
             catch (e) { console.error('Error saving cancelled:', e); }
         };
-        const saveSettings = async (blocked, weekdays, start, end, weekdayTimes = null) => {
+        const saveSettings = async (blocked, weekdays, start, end, weekdayTimes = null, dateTimes = null) => {
             if (!db) return;
-            try { 
-                const settingsData = { 
-                    blockedDates: Array.from(blocked), 
-                    blockedWeekdays: Array.from(weekdays), 
-                    dateWindowStart: start, 
+            try {
+                const settingsData = {
+                    blockedDates: Array.from(blocked),
+                    blockedWeekdays: Array.from(weekdays),
+                    dateWindowStart: start,
                     dateWindowEnd: end,
-                    weekdayTimeSettings: weekdayTimes !== null ? weekdayTimes : weekdayTimeSettings
+                    weekdayTimeSettings: weekdayTimes !== null ? weekdayTimes : weekdayTimeSettings,
+                    dateTimeSettings: dateTimes !== null ? dateTimes : dateTimeSettings
                 };
-                await db.collection('swimLessons').doc('settings').set(settingsData); 
-            } 
+                await db.collection('swimLessons').doc('settings').set(settingsData);
+            }
             catch (e) { console.error('Error saving settings:', e); }
         };
         const saveStudentNotes = async (notes) => {
@@ -205,8 +219,14 @@
             if (poolId && poolSettings[poolId]) {
                 const ps = poolSettings[poolId];
                 if ((ps.blockedDates || []).includes(dateKey)) return true;
-                const dayTimes = ps.weekdayTimeSettings && ps.weekdayTimeSettings[dayOfWeek];
-                if (dayTimes && dayTimes.length === 0) return true;
+                // Per-date override wins if present. Empty array = blocked, non-empty = available even if weekday has none.
+                const dateOverrides = ps.dateTimeSettings || {};
+                if (Object.prototype.hasOwnProperty.call(dateOverrides, dateKey)) {
+                    if (dateOverrides[dateKey].length === 0) return true;
+                } else {
+                    const dayTimes = ps.weekdayTimeSettings && ps.weekdayTimeSettings[dayOfWeek];
+                    if (dayTimes && dayTimes.length === 0) return true;
+                }
                 if (ps.dateWindowStart || ps.dateWindowEnd) {
                     if (ps.dateWindowStart && date < new Date(ps.dateWindowStart)) return true;
                     if (ps.dateWindowEnd && date > new Date(ps.dateWindowEnd)) return true;
@@ -218,8 +238,12 @@
 
             // Fall back to global settings (used by admin panel or legacy)
             if (blockedDates.has(dateKey)) return true;
-            const dayTimes = weekdayTimeSettings[dayOfWeek];
-            if (dayTimes && dayTimes.length === 0) return true;
+            if (Object.prototype.hasOwnProperty.call(dateTimeSettings, dateKey)) {
+                if (dateTimeSettings[dateKey].length === 0) return true;
+            } else {
+                const dayTimes = weekdayTimeSettings[dayOfWeek];
+                if (dayTimes && dayTimes.length === 0) return true;
+            }
             if (dateWindowStart || dateWindowEnd) {
                 if (dateWindowStart && date < new Date(dateWindowStart)) return true;
                 if (dateWindowEnd && date > new Date(dateWindowEnd)) return true;
@@ -235,7 +259,7 @@
                 const dateKey = `${year}-${month}-${day}`;
                 const booked = (bookedLessons[dateKey] || []).filter(l => !cancelledLessons.has(`${dateKey}-${l.time}`));
                 const dayOfWeek = checkDate.getDay();
-                const maxForDay = getLessonTimesForDay(dayOfWeek, poolId).length;
+                const maxForDay = getLessonTimesForDate(year, month, day, poolId).length;
                 if (!isDateBlocked(year, month, day, poolId) && booked.length < maxForDay) return checkDate;
                 checkDate.setDate(checkDate.getDate() + 1);
             }
@@ -247,7 +271,7 @@
             const findSlot = (date) => {
                 const year = date.getFullYear(), month = date.getMonth(), day = date.getDate();
                 const dateKey = `${year}-${month}-${day}`;
-                const dayTimes = getLessonTimesForDay(date.getDay(), poolId);
+                const dayTimes = getLessonTimesForDate(year, month, day, poolId);
                 if (!isDateBlocked(year, month, day, poolId) && dayTimes.length > 0) {
                     const booked = (bookedLessons[dateKey] || []).filter(l => !cancelledLessons.has(`${dateKey}-${l.time}`));
                     const bookedTimes = booked.map(l => l.time);
@@ -1662,7 +1686,7 @@ END:VEVENT
                             </>
                         )}
                         
-                        {adminTab === 'scheduling' && <AdminSchedulingPanel {...{blockedDates, blockedWeekdays, dateWindowStart, dateWindowEnd, handleStartDateChange, handleEndDateChange, setDateWindowStart, setDateWindowEnd, toggleBlockedDate, toggleBlockedWeekday, isDateBlocked, bookedLessons, cancelledLessons, firstAvailableDate: firstAvailable, saveSettings, weekdayTimeSettings, setWeekdayTimeSettings, pools, setPools, poolSettings, setPoolSettings, savePools, savePoolSettings, poolSaveError, setPoolSaveError}} />}
+                        {adminTab === 'scheduling' && <AdminSchedulingPanel {...{blockedDates, blockedWeekdays, dateWindowStart, dateWindowEnd, handleStartDateChange, handleEndDateChange, setDateWindowStart, setDateWindowEnd, toggleBlockedDate, toggleBlockedWeekday, isDateBlocked, bookedLessons, cancelledLessons, firstAvailableDate: firstAvailable, saveSettings, weekdayTimeSettings, setWeekdayTimeSettings, dateTimeSettings, setDateTimeSettings, pools, setPools, poolSettings, setPoolSettings, savePools, savePoolSettings, poolSaveError, setPoolSaveError}} />}
                     </div>
                     {showCancelModal && cancelTarget && (
                         <div className="modal-overlay">
@@ -1829,7 +1853,7 @@ END:VEVENT
                 <section className="hero"><div className="hero-content"><h1>Swim for Life</h1><p className="tagline">Private Swim Lessons</p><button className="hero-button" onClick={() => handleBookingClick(null)}>Book a private lesson</button><button className="hero-button hero-button-secondary" onClick={() => { setShowAbout(a => !a); setTimeout(() => { if (!showAbout) document.getElementById('about').scrollIntoView({ behavior: 'smooth' }); }, 50); }}>About Coach Conor</button></div></section>
                 <section className={`about-section ${showAbout ? 'visible' : ''}`} id="about"><div className="about-content"><h2>About Coach Conor</h2><p>Coach Conor is a Raleigh native with a deep love of swimming and a life of experience in the sport. He currently serves as the head coach of the Wood Valley Otters, returning this year for his fifth year. He has over ten years of coaching experience working with swimmers of all ages on technique and stroke work.</p><p>When Coach Conor is not coaching in the summer, he works as a humanities teacher for middle and high schoolers at St. Thomas More Academy. He is the head coach of the school's swim team, which he started in 2015 while he was a student.</p><p>Coach Conor graduated from Hillsdale College and now lives in Knightdale with his lovely wife and daughter. During his free time, he enjoys reading, writing, and playing boardgames.</p><p className="about-certified">Coach Conor is lifeguard certified.</p></div></section>
                 <section className="pricing"><h2>Pricing</h2><div className="price-grid"><div className="price-card" onClick={() => handleBookingClick('private')}><div className="swimmers">1 Swimmer</div><div className="amount">$40</div><div className="duration">30 minutes</div><div className="click-hint">Click to book</div></div><div className="price-card" onClick={() => handleBookingClick('group')}><div className="swimmers">2 Swimmers</div><div className="amount">$70</div><div className="duration">30 minutes</div><div className="click-hint">Click to book</div></div></div></section>
-                <section className={`calendar-section ${showCalendar ? 'visible' : ''}`} id="calendar"><h2>Book Your Lesson</h2><SwimLessonCalendar {...{preselectedType, autoBookWeekly, bookedLessons, setBookedLessons, saveLessons, cancelledLessons, isDateBlocked, getFirstAvailableDate, getClosestAvailableTo, dateWindowEnd, lessonTypeUpdate, weekdayTimeSettings, pools, poolSettings}} /></section>
+                <section className={`calendar-section ${showCalendar ? 'visible' : ''}`} id="calendar"><h2>Book Your Lesson</h2><SwimLessonCalendar {...{preselectedType, autoBookWeekly, bookedLessons, setBookedLessons, saveLessons, cancelledLessons, isDateBlocked, getFirstAvailableDate, getClosestAvailableTo, dateWindowEnd, lessonTypeUpdate, weekdayTimeSettings, dateTimeSettings, pools, poolSettings}} /></section>
                 <footer><p>&copy; 2026 Swim for Life, LLC</p></footer>
             </>
         );

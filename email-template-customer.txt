@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Booking Confirmed — Swim for Life</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f0f7ff;font-family:'Segoe UI',Arial,sans-serif;">
+
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0f7ff;padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+
+          <!-- HEADER -->
+          <tr>
+            <td style="background:linear-gradient(135deg,#1e40af 0%,#0ea5e9 100%);border-radius:16px 16px 0 0;padding:40px 40px 28px;text-align:center;">
+              <div style="color:#ffffff;font-size:24px;font-weight:700;letter-spacing:0.5px;">Swim for Life</div>
+              <div style="margin-top:16px;display:inline-block;background:rgba(255,255,255,0.18);border:1.5px solid rgba(255,255,255,0.4);border-radius:30px;padding:7px 22px;">
+                <span style="color:#ffffff;font-size:13px;font-weight:600;letter-spacing:1px;">Booking Confirmed!</span>
+              </div>
+            </td>
+          </tr>
+
+          <!-- WAVE DIVIDER -->
+          <tr>
+            <td style="background:linear-gradient(135deg,#1e40af 0%,#0ea5e9 100%);line-height:0;font-size:0;">
+              <svg viewBox="0 0 600 30" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;">
+                <path d="M0,20 C150,40 450,0 600,20 L600,30 L0,30 Z" fill="#ffffff"/>
+              </svg>
+            </td>
+          </tr>
+
+          <!-- BODY CARD -->
+          <tr>
+            <td style="background:#ffffff;padding:36px 40px 40px;border-radius:0 0 16px 16px;box-shadow:0 4px 24px rgba(14,165,233,0.10);">
+
+              <!-- GREETING -->
+              <p style="margin:0 0 24px;color:#1e293b;font-size:16px;line-height:1.6;">
+                Hi <strong>{{parent_name}}</strong>,<br/>
+                Thank you for booking with Swim for Life! I am excited to see you at the pool. Your confirmed details are below.
+              </p>
+
+              <!-- BOOKING SUMMARY -->
+              <div style="margin-bottom:24px;">
+                <div style="color:#0ea5e9;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:12px;border-bottom:2px solid #e0f2fe;padding-bottom:6px;">Booking Summary</div>
+                <table width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="padding:7px 0;color:#64748b;font-size:14px;width:45%;">Lesson Type</td>
+                    <td style="padding:7px 0;color:#1e293b;font-size:14px;font-weight:600;">{{lesson_type}}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:7px 0;color:#64748b;font-size:14px;">Total Lessons</td>
+                    <td style="padding:7px 0;color:#1e293b;font-size:14px;font-weight:600;">{{total_lessons}}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:7px 0;color:#64748b;font-size:14px;">Price Per Lesson</td>
+                    <td style="padding:7px 0;color:#16a34a;font-size:15px;font-weight:700;">{{price_per_lesson}}</td>
+                  </tr>
+                </table>
+              </div>
+
+              <!-- POOL LOCATION -->
+              <div style="margin-bottom:24px;">
+                <div style="color:#0ea5e9;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:12px;border-bottom:2px solid #e0f2fe;padding-bottom:6px;">Pool Location</div>
+                <div style="background:#f0f9ff;border-radius:10px;padding:18px 20px;">
+                  <table cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td style="vertical-align:top;padding-right:14px;font-size:14px;color:#0ea5e9;font-weight:700;line-height:1.4;">Location:</td>
+                      <td>
+                        <div style="color:#1e293b;font-size:16px;font-weight:700;">{{pool_name}}</div>
+                        <div style="color:#64748b;font-size:14px;margin-top:4px;">{{pool_address}}</div>
+                      </td>
+                    </tr>
+                  </table>
+                </div>
+              </div>
+
+              <!-- SWIMMER(S) -->
+              <div style="margin-bottom:24px;">
+                <div style="color:#0ea5e9;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:12px;border-bottom:2px solid #e0f2fe;padding-bottom:6px;">Swimmer(s)</div>
+                <div style="background:#f8fafc;border-radius:10px;padding:14px 18px;color:#1e293b;font-size:14px;font-weight:500;white-space:pre-line;line-height:1.9;">{{swimmer_info}}</div>
+              </div>
+
+              <!-- SCHEDULED LESSONS -->
+              <div style="margin-bottom:28px;">
+                <div style="color:#0ea5e9;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:12px;border-bottom:2px solid #e0f2fe;padding-bottom:6px;">Scheduled Lesson(s)</div>
+                <div style="background:#f8fafc;border-radius:10px;padding:14px 18px;color:#1e293b;font-size:14px;white-space:pre-line;line-height:2.1;">{{lesson_dates}}</div>
+              </div>
+
+              <!-- WHAT TO BRING -->
+              <div style="margin-bottom:28px;">
+                <div style="color:#0ea5e9;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:12px;border-bottom:2px solid #e0f2fe;padding-bottom:6px;">What to Bring</div>
+                <table cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="padding:5px 10px 5px 0;color:#64748b;font-size:14px;">—</td>
+                    <td style="padding:5px 0;color:#1e293b;font-size:14px;">Swimsuit</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:5px 10px 5px 0;color:#64748b;font-size:14px;">—</td>
+                    <td style="padding:5px 0;color:#1e293b;font-size:14px;">Goggles</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:5px 10px 5px 0;color:#64748b;font-size:14px;">—</td>
+                    <td style="padding:5px 0;color:#1e293b;font-size:14px;">Towel</td>
+                  </tr>
+                </table>
+              </div>
+
+              <!-- CANCELLATION POLICY -->
+              <div style="background:#fffbeb;border-left:4px solid #f59e0b;border-radius:6px;padding:14px 18px;margin-bottom:28px;">
+                <div style="color:#92400e;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:5px;">Cancellation Policy</div>
+                <div style="color:#78350f;font-size:14px;line-height:1.6;">Please try to provide at least <strong>24 hours notice</strong> if you need to cancel or reschedule.</div>
+              </div>
+
+              <!-- SIGN-OFF -->
+              <div style="border-top:1px solid #e2e8f0;padding-top:24px;">
+                <p style="margin:0 0 6px;color:#1e293b;font-size:15px;line-height:1.7;">
+                  If you have any questions, just reply to this email or call/text!
+                </p>
+                <p style="margin:16px 0 0;color:#1e293b;font-size:15px;">
+                  See you at the pool!<br/>
+                  <strong style="color:#1e40af;">— Coach Conor</strong>
+		</p
+		>919-695-1534
+                </p>
+              </div>
+
+            </td>
+          </tr>
+
+          <!-- FOOTER -->
+          <tr>
+            <td style="text-align:center;padding:20px 0 8px;">
+              <div style="color:#94a3b8;font-size:12px;">Swim for Life &nbsp;·&nbsp; Automated booking confirmation</div>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>

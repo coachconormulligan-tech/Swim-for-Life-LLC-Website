@@ -28,7 +28,7 @@ h1 { font-family: 'Playfair Display', serif; font-size: 4rem; font-weight: 700; 
 .hero-subtagline { font-size: 1.05rem; opacity: 0.85; font-weight: 400; margin-top: 0.5rem; letter-spacing: 0.5px; }
 .contact-section { padding: 5rem 2rem; background: white; display: none; }
 .contact-section.visible { display: block; }
-.contact-content { max-width: 720px; margin: 0 auto; text-align: center; }
+.contact-content { max-width: 840px; margin: 0 auto; text-align: center; }
 .contact-content h2 { font-family: 'Playfair Display', serif; font-size: 2.5rem; color: #1e40af; margin-bottom: 1rem; }
 .contact-intro { font-size: 1.1rem; color: #475569; margin-bottom: 2.5rem; }
 .contact-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.5rem; }

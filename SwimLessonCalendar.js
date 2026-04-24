@@ -700,9 +700,9 @@ END:VEVENT
                             <div key={day} onClick={() => canClick && handleDateSelect(year, month, day)} className={cn}>
                                 <div className="day-number">{day}</div>
                                 {!isPast && !blocked && !isTodayDate && (
-                                    <div className="slots-container">
+                                    <div className="slots-container" style={totalBars > 4 ? {gap: `${Math.max(1, Math.floor(9 / totalBars))}px`} : undefined}>
                                         {[...Array(totalBars)].map((_, j) => (
-                                            <div key={j} className={`slot-bar ${j < bookedCount ? 'booked' : 'available'}`} />
+                                            <div key={j} className={`slot-bar ${j < bookedCount ? 'booked' : 'available'}`} style={totalBars > 4 ? {height: `${Math.max(2, Math.floor(24 / totalBars))}px`} : undefined} />
                                         ))}
                                     </div>
                                 )}

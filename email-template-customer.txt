@@ -107,6 +107,14 @@
                 </table>
               </div>
 
+              <!-- PAYMENT INFO -->
+              <div style="margin-bottom:24px;">
+                <div style="color:#0ea5e9;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:12px;border-bottom:2px solid #e0f2fe;padding-bottom:6px;">Payment</div>
+                <div style="background:#f0fdf4;border-radius:10px;padding:14px 18px;color:#1e293b;font-size:14px;line-height:1.6;">
+                  Payment accepted via <strong>cash</strong>, <strong>check</strong>, or <strong>Zelle</strong>.
+                </div>
+              </div>
+
               <!-- CANCELLATION POLICY -->
               <div style="background:#fffbeb;border-left:4px solid #f59e0b;border-radius:6px;padding:14px 18px;margin-bottom:28px;">
                 <div style="color:#92400e;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:5px;">Cancellation Policy</div>
@@ -118,11 +126,10 @@
                 <p style="margin:0 0 6px;color:#1e293b;font-size:15px;line-height:1.7;">
                   If you have any questions, just reply to this email or call/text!
                 </p>
-                <p style="margin:16px 0 0;color:#1e293b;font-size:15px;">
+                <p style="margin:16px 0 0;color:#1e293b;font-size:15px;line-height:1.6;">
                   See you at the pool!<br/>
-                  <strong style="color:#1e40af;">— Coach Conor</strong>
-		</p
-		>919-695-1534
+                  <strong style="color:#1e40af;">— Coach Conor</strong><br/>
+                  <span style="color:#64748b;font-size:14px;">919-695-1534</span>
                 </p>
               </div>
 

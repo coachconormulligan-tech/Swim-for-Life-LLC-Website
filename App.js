@@ -29,9 +29,15 @@
         const [hideCancelled, setHideCancelled] = useState(true);
         const [showResetModal, setShowResetModal] = useState(false);
         const [studentNotes, setStudentNotes] = useState({});
-        const [selectedStudent, setSelectedStudent] = useState(null);
+        const [selectedStudentKey, setSelectedStudentKey] = useState(null);
         const [studentSearch, setStudentSearch] = useState('');
         const [editingNote, setEditingNote] = useState('');
+        const [manualStudents, setManualStudents] = useState([]);
+        const [showAddStudentModal, setShowAddStudentModal] = useState(false);
+        const [newStudentData, setNewStudentData] = useState({ name: '', birthday: '', parentName: '', email: '', phone: '' });
+        const [showAddLessonModal, setShowAddLessonModal] = useState(false);
+        const [newLessonData, setNewLessonData] = useState({ date: '', time: '4:00 PM', lessonType: 'private', poolId: '' });
+        const [savingIndicator, setSavingIndicator] = useState(false);
         // Per-weekday time settings: { 0: ['4:00 PM', '3:30 PM'], 1: [...], ... }
         const [weekdayTimeSettings, setWeekdayTimeSettings] = useState({});
         // Per-date time overrides (global): { 'Y-M-D': ['10:00 AM', ...] }. Empty array = blocked.
@@ -120,6 +126,9 @@
 
                     const poolSettingsDoc = await db.collection('swimLessons').doc('poolSettings').get();
                     if (poolSettingsDoc.exists) setPoolSettings(poolSettingsDoc.data().data || {});
+
+                    const manualStudentsDoc = await db.collection('swimLessons').doc('manualStudents').get();
+                    if (manualStudentsDoc.exists) setManualStudents(manualStudentsDoc.data().data || []);
                 } catch (error) {
                     console.error('Error loading data:', error);
                 }
@@ -158,6 +167,11 @@
             if (!db) return;
             try { await db.collection('swimLessons').doc('studentNotes').set({ data: notes }); }
             catch (e) { console.error('Error saving student notes:', e); }
+        };
+        const saveManualStudents = async (students) => {
+            if (!db) return;
+            try { await db.collection('swimLessons').doc('manualStudents').set({ data: students }); }
+            catch (e) { console.error('Error saving manual students:', e); }
         };
         const savePools = async (p) => {
             if (!db) { setPoolSaveError('Firebase is not connected. Pool data cannot be saved.'); return; }
@@ -203,6 +217,12 @@
             const urlParams = new URLSearchParams(window.location.search);
             if (urlParams.get('admin') === 'swimforlife2026') setShowAdmin(true);
         }, []);
+
+        useEffect(() => {
+            if (selectedStudentKey) {
+                setEditingNote(studentNotes[selectedStudentKey] || '');
+            }
+        }, [selectedStudentKey, studentNotes]);
 
         const handleBookingClick = (type) => {
             setPreselectedType(type);
@@ -505,7 +525,9 @@
             }
             
             setBookedLessons(newBookedLessons);
+            setSavingIndicator(true);
             await saveLessons(newBookedLessons);
+            setSavingIndicator(false);
             setEditingLesson(null);
             setEditLessonData({});
         };
@@ -538,13 +560,87 @@
                 });
             });
             
+            // Also update manualStudent record if present (so changes persist for students with no lessons yet)
+            const newManualStudents = manualStudents.map(ms =>
+                ms.name && ms.name.toLowerCase().trim() === studentNameLower
+                    ? { ...ms, parentName: newContactData.parentName, email: newContactData.email, phone: newContactData.phone }
+                    : ms
+            );
+            const manualChanged = JSON.stringify(newManualStudents) !== JSON.stringify(manualStudents);
+
+            setSavingIndicator(true);
             if (updated) {
                 setBookedLessons(newBookedLessons);
                 await saveLessons(newBookedLessons);
             }
-            
+            if (manualChanged) {
+                setManualStudents(newManualStudents);
+                await saveManualStudents(newManualStudents);
+            }
+            setSavingIndicator(false);
+
             setEditingStudentContact(null);
             setEditContactData({ parentName: '', email: '', phone: '' });
+        };
+
+        // Add a manual student (with optional contact info)
+        const addManualStudent = async () => {
+            if (!newStudentData.name.trim()) return;
+            const student = {
+                id: 'ms-' + Date.now(),
+                name: newStudentData.name.trim(),
+                birthday: newStudentData.birthday || '',
+                parentName: newStudentData.parentName || '',
+                email: newStudentData.email || '',
+                phone: newStudentData.phone || ''
+            };
+            const updated = [...manualStudents, student];
+            setManualStudents(updated);
+            setSavingIndicator(true);
+            await saveManualStudents(updated);
+            setSavingIndicator(false);
+            setShowAddStudentModal(false);
+            setNewStudentData({ name: '', birthday: '', parentName: '', email: '', phone: '' });
+            setSelectedStudentKey(student.name.toLowerCase().trim());
+        };
+
+        // Schedule a lesson manually for the selected student
+        const addManualLesson = async () => {
+            if (!selectedStudentKey || !newLessonData.date || !newLessonData.time) return;
+            const studentRecord = getAllStudents().find(s => s.name && s.name.toLowerCase().trim() === selectedStudentKey);
+            if (!studentRecord) return;
+            const d = new Date(newLessonData.date);
+            const dateKey = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+            const parent = studentRecord.parents && studentRecord.parents[0] ? studentRecord.parents[0] : { name: '', email: '', phone: '' };
+            const lesson = {
+                time: newLessonData.time,
+                parentName: parent.name || '',
+                email: parent.email || '',
+                phone: parent.phone || '',
+                swimmer1Name: studentRecord.name,
+                swimmer1Birthday: (studentRecord.birthdays && studentRecord.birthdays[0]) || '',
+                lessonType: newLessonData.lessonType,
+                price: newLessonData.lessonType === 'group' ? 70 : 40,
+                poolId: newLessonData.poolId || '',
+                manuallyAdded: true
+            };
+            const newBookedLessons = { ...bookedLessons, [dateKey]: [...(bookedLessons[dateKey] || []), lesson] };
+            setBookedLessons(newBookedLessons);
+            setSavingIndicator(true);
+            await saveLessons(newBookedLessons);
+            setSavingIndicator(false);
+            setShowAddLessonModal(false);
+            setNewLessonData({ date: '', time: '4:00 PM', lessonType: 'private', poolId: '' });
+        };
+
+        const deleteManualStudent = async (name) => {
+            const key = name.toLowerCase().trim();
+            const updated = manualStudents.filter(ms => ms.name.toLowerCase().trim() !== key);
+            setManualStudents(updated);
+            setSavingIndicator(true);
+            await saveManualStudents(updated);
+            setSavingIndicator(false);
+            if (selectedStudentKey === key) setSelectedStudentKey(null);
         };
 
         const getAllLessons = () => {
@@ -938,6 +1034,35 @@ END:VEVENT
                 });
             });
             
+            // Add manual students that don't already appear via real lessons
+            manualStudents.forEach(ms => {
+                const key = ms.name.toLowerCase().trim();
+                if (!students[key]) {
+                    students[key] = {
+                        name: ms.name,
+                        birthdays: new Set(),
+                        years: new Set(),
+                        parents: {},
+                        lessons: [],
+                        totalLessons: 0,
+                        completedLessons: 0,
+                        upcomingLessons: 0,
+                        totalSpent: 0,
+                        firstLesson: null,
+                        lastLesson: null,
+                        isManual: true
+                    };
+                    if (ms.birthday) students[key].birthdays.add(ms.birthday);
+                    if (ms.parentName) {
+                        students[key].parents[ms.parentName.toLowerCase().trim()] = {
+                            name: ms.parentName,
+                            email: ms.email || '',
+                            phone: ms.phone || ''
+                        };
+                    }
+                }
+            });
+
             // Convert to array and sort lessons
             return Object.values(students).map(s => ({
                 ...s,
@@ -948,10 +1073,12 @@ END:VEVENT
             })).sort((a, b) => a.name.localeCompare(b.name));
         };
 
-        const updateStudentNote = (studentKey, note) => {
+        const updateStudentNote = async (studentKey, note) => {
             const newNotes = { ...studentNotes, [studentKey]: note };
             setStudentNotes(newNotes);
-            saveStudentNotes(newNotes);
+            setSavingIndicator(true);
+            await saveStudentNotes(newNotes);
+            setSavingIndicator(false);
         };
 
         if (isLoading) {
@@ -1429,13 +1556,22 @@ END:VEVENT
                             </>
                         )}
                         
-                        {adminTab === 'students' && (
+                        {adminTab === 'students' && (() => {
+                            const allStudents = getAllStudents();
+                            const selectedStudent = selectedStudentKey ? allStudents.find(s => s.name && s.name.toLowerCase().trim() === selectedStudentKey) : null;
+                            return (
                             <>
+                                <div style={{display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem'}}>
+                                    <button
+                                        onClick={() => setShowAddStudentModal(true)}
+                                        style={{padding: '0.5rem 1rem', background: '#059669', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.875rem'}}
+                                    >+ Add Student</button>
+                                </div>
                                 <div className="admin-stats">
-                                    <div className="stat-card"><h4>Total Students</h4><div className="stat-value">{getAllStudents().length}</div></div>
-                                    <div className="stat-card"><h4>Active Students</h4><div className="stat-value">{getAllStudents().filter(s => s.upcomingLessons > 0).length}</div></div>
-                                    <div className="stat-card"><h4>Total Lessons Taught</h4><div className="stat-value">{getAllStudents().reduce((sum, s) => sum + s.completedLessons, 0)}</div></div>
-                                    <div className="stat-card"><h4>Returning Students</h4><div className="stat-value">{getAllStudents().filter(s => s.years.length > 1).length}</div></div>
+                                    <div className="stat-card"><h4>Total Students</h4><div className="stat-value">{allStudents.length}</div></div>
+                                    <div className="stat-card"><h4>Active Students</h4><div className="stat-value">{allStudents.filter(s => s.upcomingLessons > 0).length}</div></div>
+                                    <div className="stat-card"><h4>Total Lessons Taught</h4><div className="stat-value">{allStudents.reduce((sum, s) => sum + s.completedLessons, 0)}</div></div>
+                                    <div className="stat-card"><h4>Returning Students</h4><div className="stat-value">{allStudents.filter(s => s.years.length > 1).length}</div></div>
                                 </div>
                                 
                                 <div style={{display: 'flex', gap: '1.5rem', flexWrap: 'wrap'}}>
@@ -1452,18 +1588,16 @@ END:VEVENT
                                                 />
                                             </div>
                                             <div style={{maxHeight: '500px', overflowY: 'auto'}}>
-                                                {getAllStudents()
+                                                {allStudents
                                                     .filter(s => s.name.toLowerCase().includes(studentSearch.toLowerCase()))
                                                     .map((student, i) => {
-                                                        const isSelected = selectedStudent?.name.toLowerCase() === student.name.toLowerCase();
-                                                        const hasNotes = studentNotes[student.name.toLowerCase().trim()];
+                                                        const studentKey = student.name.toLowerCase().trim();
+                                                        const isSelected = selectedStudentKey === studentKey;
+                                                        const hasNotes = studentNotes[studentKey];
                                                         return (
-                                                            <div 
+                                                            <div
                                                                 key={i}
-                                                                onClick={() => {
-                                                                    setSelectedStudent(student);
-                                                                    setEditingNote(studentNotes[student.name.toLowerCase().trim()] || '');
-                                                                }}
+                                                                onClick={() => setSelectedStudentKey(studentKey)}
                                                                 style={{
                                                                     padding: '0.75rem 1rem',
                                                                     borderRadius: '8px',
@@ -1494,7 +1628,7 @@ END:VEVENT
                                                             </div>
                                                         );
                                                     })}
-                                                {getAllStudents().filter(s => s.name.toLowerCase().includes(studentSearch.toLowerCase())).length === 0 && (
+                                                {allStudents.filter(s => s.name.toLowerCase().includes(studentSearch.toLowerCase())).length === 0 && (
                                                     <div style={{textAlign: 'center', padding: '2rem', color: '#64748b'}}>
                                                         {studentSearch ? 'No students found' : 'No students yet'}
                                                     </div>
@@ -1514,10 +1648,27 @@ END:VEVENT
                                                             <p style={{margin: '0.25rem 0 0 0', color: '#64748b', fontSize: '0.875rem'}}>Age: {selectedStudent.birthdays.map(b => calculateAge(b)).join(', ')}</p>
                                                         )}
                                                     </div>
-                                                    <button 
-                                                        onClick={() => setSelectedStudent(null)}
-                                                        style={{background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#64748b'}}
-                                                    >×</button>
+                                                    <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center'}}>
+                                                        <button
+                                                            onClick={() => {
+                                                                const today = new Date();
+                                                                const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+                                                                setNewLessonData({ date: dateStr, time: '4:00 PM', lessonType: 'private', poolId: '' });
+                                                                setShowAddLessonModal(true);
+                                                            }}
+                                                            style={{padding: '0.4rem 0.8rem', background: '#059669', color: 'white', border: 'none', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600}}
+                                                        >+ Add Lesson</button>
+                                                        {selectedStudent.isManual && selectedStudent.totalLessons === 0 && (
+                                                            <button
+                                                                onClick={() => { if (confirm(`Remove ${selectedStudent.name}?`)) deleteManualStudent(selectedStudent.name); }}
+                                                                style={{padding: '0.4rem 0.8rem', background: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600}}
+                                                            >Delete</button>
+                                                        )}
+                                                        <button
+                                                            onClick={() => setSelectedStudentKey(null)}
+                                                            style={{background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#64748b'}}
+                                                        >×</button>
+                                                    </div>
                                                 </div>
                                                 
                                                 {/* Stats */}
@@ -1696,8 +1847,9 @@ END:VEVENT
                                     </div>
                                 </div>
                             </>
-                        )}
-                        
+                            );
+                        })()}
+
                         {adminTab === 'scheduling' && <AdminSchedulingPanel {...{blockedDates, blockedWeekdays, dateWindowStart, dateWindowEnd, handleStartDateChange, handleEndDateChange, setDateWindowStart, setDateWindowEnd, toggleBlockedDate, toggleBlockedWeekday, isDateBlocked, bookedLessons, cancelledLessons, firstAvailableDate: firstAvailable, saveSettings, weekdayTimeSettings, setWeekdayTimeSettings, dateTimeSettings, setDateTimeSettings, pools, setPools, poolSettings, setPoolSettings, savePools, savePoolSettings, poolSaveError, setPoolSaveError}} />}
                     </div>
                     {showCancelModal && cancelTarget && (
@@ -1835,6 +1987,90 @@ END:VEVENT
                                     <button onClick={() => { setEditingLesson(null); setEditLessonData({}); }} className="btn btn-secondary">Cancel</button>
                                 </div>
                             </div>
+                        </div>
+                    )}
+                    {showAddStudentModal && (
+                        <div className="modal-overlay">
+                            <div className="modal" style={{maxWidth: '460px'}}>
+                                <h4 style={{color: '#059669'}}>Add New Student</h4>
+                                <p style={{color: '#64748b', fontSize: '0.875rem', marginBottom: '1rem'}}>Enter the student's name and birthday. You can add lessons and contact info after creating the student.</p>
+                                <div className="form-group" style={{margin: '0 0 0.75rem 0'}}>
+                                    <label style={{fontSize: '0.8rem', fontWeight: 600}}>Student Name <span style={{color: '#dc2626'}}>*</span></label>
+                                    <input type="text" value={newStudentData.name} onChange={(e) => setNewStudentData({...newStudentData, name: e.target.value})} className="form-input" placeholder="Enter student name" />
+                                </div>
+                                <div className="form-group" style={{margin: '0 0 0.75rem 0'}}>
+                                    <label style={{fontSize: '0.8rem', fontWeight: 600}}>Birthday <span style={{color: '#dc2626'}}>*</span></label>
+                                    <input type="date" value={newStudentData.birthday} onChange={(e) => setNewStudentData({...newStudentData, birthday: e.target.value})} className="form-input" />
+                                    {newStudentData.birthday && <div style={{fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem'}}>Age: {calculateAge(newStudentData.birthday)}</div>}
+                                </div>
+                                <div style={{borderTop: '1px solid #e2e8f0', paddingTop: '0.75rem', marginTop: '0.5rem'}}>
+                                    <div style={{fontSize: '0.75rem', fontWeight: 600, color: '#64748b', marginBottom: '0.5rem'}}>Optional contact info</div>
+                                    <div className="form-group" style={{margin: '0 0 0.5rem 0'}}>
+                                        <label style={{fontSize: '0.75rem'}}>Parent Name</label>
+                                        <input type="text" value={newStudentData.parentName} onChange={(e) => setNewStudentData({...newStudentData, parentName: e.target.value})} className="form-input" />
+                                    </div>
+                                    <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem'}}>
+                                        <div className="form-group" style={{margin: 0}}>
+                                            <label style={{fontSize: '0.75rem'}}>Email</label>
+                                            <input type="email" value={newStudentData.email} onChange={(e) => setNewStudentData({...newStudentData, email: e.target.value})} className="form-input" />
+                                        </div>
+                                        <div className="form-group" style={{margin: 0}}>
+                                            <label style={{fontSize: '0.75rem'}}>Phone</label>
+                                            <input type="tel" value={newStudentData.phone} onChange={(e) => setNewStudentData({...newStudentData, phone: e.target.value})} className="form-input" />
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="btn-row" style={{marginTop: '1.5rem'}}>
+                                    <button onClick={addManualStudent} disabled={!newStudentData.name.trim() || !newStudentData.birthday} className="btn btn-success">Save Student</button>
+                                    <button onClick={() => { setShowAddStudentModal(false); setNewStudentData({ name: '', birthday: '', parentName: '', email: '', phone: '' }); }} className="btn btn-secondary">Cancel</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    {showAddLessonModal && selectedStudentKey && (
+                        <div className="modal-overlay">
+                            <div className="modal" style={{maxWidth: '460px'}}>
+                                <h4 style={{color: '#1e40af'}}>Add Lesson</h4>
+                                <p style={{color: '#64748b', fontSize: '0.875rem', marginBottom: '1rem'}}>Manually schedule a lesson for this student.</p>
+                                <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem'}}>
+                                    <div className="form-group" style={{margin: 0}}>
+                                        <label style={{fontSize: '0.8rem', fontWeight: 600}}>Date <span style={{color: '#dc2626'}}>*</span></label>
+                                        <input type="date" value={newLessonData.date} onChange={(e) => setNewLessonData({...newLessonData, date: e.target.value})} className="form-input" />
+                                    </div>
+                                    <div className="form-group" style={{margin: 0}}>
+                                        <label style={{fontSize: '0.8rem', fontWeight: 600}}>Time <span style={{color: '#dc2626'}}>*</span></label>
+                                        <select value={newLessonData.time} onChange={(e) => setNewLessonData({...newLessonData, time: e.target.value})} className="form-select">
+                                            {ALL_LESSON_TIMES.map(t => <option key={t} value={t}>{t}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+                                <div className="form-group" style={{margin: '0.75rem 0 0 0'}}>
+                                    <label style={{fontSize: '0.8rem', fontWeight: 600}}>Lesson Type</label>
+                                    <select value={newLessonData.lessonType} onChange={(e) => setNewLessonData({...newLessonData, lessonType: e.target.value})} className="form-select">
+                                        <option value="private">Private ($40)</option>
+                                        <option value="group">Group ($70)</option>
+                                    </select>
+                                </div>
+                                {pools.length > 0 && (
+                                    <div className="form-group" style={{margin: '0.75rem 0 0 0'}}>
+                                        <label style={{fontSize: '0.8rem', fontWeight: 600}}>Pool</label>
+                                        <select value={newLessonData.poolId} onChange={(e) => setNewLessonData({...newLessonData, poolId: e.target.value})} className="form-select">
+                                            <option value="">— No pool assigned —</option>
+                                            {pools.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                        </select>
+                                    </div>
+                                )}
+                                <div className="btn-row" style={{marginTop: '1.5rem'}}>
+                                    <button onClick={addManualLesson} disabled={!newLessonData.date || !newLessonData.time} className="btn btn-success">Save Lesson</button>
+                                    <button onClick={() => setShowAddLessonModal(false)} className="btn btn-secondary">Cancel</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    {savingIndicator && (
+                        <div style={{position: 'fixed', top: '1rem', right: '1rem', background: '#1e40af', color: 'white', padding: '0.5rem 1rem', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.2)', zIndex: 2000, fontSize: '0.875rem', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                            <div style={{width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.8s linear infinite'}}></div>
+                            Saving…
                         </div>
                     )}
                     {showResetModal && (

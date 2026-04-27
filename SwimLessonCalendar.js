@@ -634,6 +634,20 @@ END:VEVENT
 
         const { year, month, firstDay, daysInMonth } = getMonthData(currentDate);
         const monthName = currentDate.toLocaleString('default', { month: 'long' });
+
+        // Find the last available (non-blocked) date within the booking window for the selected pool
+        const lastAvailableDateKey = (() => {
+            if (!effectiveDateWindowEnd) return null;
+            const end = new Date(effectiveDateWindowEnd);
+            const d = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+            for (let i = 0; i < 400; i++) {
+                if (!isDateBlocked(d.getFullYear(), d.getMonth(), d.getDate(), selectedPool)) {
+                    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+                }
+                d.setDate(d.getDate() - 1);
+            }
+            return null;
+        })();
         const weeklyCount = selectedDate && selectedTime ? countWeeklyLessons(selectedDate, selectedTime) : 0;
         const lastLessonDate = selectedDate && selectedTime ? getLastLessonDate(selectedDate, selectedTime) : null;
         const startDateStr = selectedDate ? new Date(selectedDate.year, selectedDate.month, selectedDate.day).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
@@ -644,7 +658,7 @@ END:VEVENT
                 {/* Pool selector — must be chosen before date/time */}
                 {pools && pools.length > 0 && (
                     <div className="form-group" style={{marginBottom: '1.5rem'}}>
-                        <label style={{fontWeight: 600, color: '#1e40af', marginBottom: '0.5rem', display: 'block'}}>Select a Pool *</label>
+                        <label style={{fontWeight: 600, color: '#1e40af', marginBottom: '0.5rem', display: 'block'}}>Select a Pool <span className="req">*</span></label>
                         <select
                             value={selectedPool}
                             onChange={(e) => handlePoolChange(e.target.value)}
@@ -716,6 +730,7 @@ END:VEVENT
                                 {isConflictDay && !isPast && <div style={{fontSize: '0.65rem', color: '#dc2626', marginTop: '4px', fontWeight: 600}}>Conflict</div>}
                                 {isTodayDate && <div style={{fontSize: '0.65rem', color: '#92400e', marginTop: '4px'}}>Today</div>}
                                 {blocked && !isPast && !isTodayDate && !isConflictDay && <div style={{fontSize: '0.65rem', color: '#94a3b8', marginTop: '4px'}}>Unavailable</div>}
+                                {lastAvailableDateKey === dateKey && !isPast && !blocked && !isTodayDate && <div className="last-day-note">Last day of lessons this year</div>}
                             </div>
                         );
                     })}
@@ -823,13 +838,14 @@ END:VEVENT
                             )}
                         </div>
                         
-                        <div className="form-group"><label>Time Slot *</label><select value={selectedTime} onChange={(e) => setSelectedTime(e.target.value)} className="form-select">{getAvailableTimes(selectedDate).map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                        <div className="form-group"><label>Lesson Type *</label><select value={formData.lessonType} onChange={(e) => setFormData({...formData, lessonType: e.target.value})} className="form-select"><option value="private">Private (1 swimmer) - $40</option><option value="group">Group (2 swimmers) - $70</option></select></div>
-                        <div className="form-group"><label>Parent Name *</label><input type="text" value={formData.parentName} onChange={(e) => setFormData({...formData, parentName: e.target.value})} className="form-input" placeholder="Enter parent name" /></div>
-                        <div className="form-group"><label>Email *</label><input type="email" value={formData.email} onChange={(e) => { setFormData({...formData, email: e.target.value}); if (formErrors.email && validateEmail(e.target.value)) setFormErrors({...formErrors, email: null}); }} className={`form-input ${formErrors.email ? 'error' : ''}`} placeholder="example@email.com" />{formErrors.email && <div className="error-message">{formErrors.email}</div>}</div>
-                        <div className="form-group"><label>Phone Number *</label><input type="tel" value={formData.phone} onChange={(e) => { const f = formatPhoneNumber(e.target.value); setFormData({...formData, phone: f}); if (formErrors.phone && validatePhone(f)) setFormErrors({...formErrors, phone: null}); }} className={`form-input ${formErrors.phone ? 'error' : ''}`} placeholder="(555) 123-4567" />{formErrors.phone && <div className="error-message">{formErrors.phone}</div>}</div>
-                        <div className="section-divider"><div className="section-title">Swimmer 1 Information</div><div className="form-group"><label>Swimmer Name *</label><input type="text" value={formData.swimmer1Name} onChange={(e) => setFormData({...formData, swimmer1Name: e.target.value})} className="form-input" placeholder="Enter swimmer name" /></div><div className="form-group"><label>Swimmer Birthday *</label><input type="date" value={formData.swimmer1Birthday} onChange={(e) => setFormData({...formData, swimmer1Birthday: e.target.value})} className="form-input" />{formData.swimmer1Birthday && <div style={{fontSize: '0.8rem', color: '#64748b', marginTop: '0.25rem'}}>Age: {calculateAge(formData.swimmer1Birthday)}</div>}</div></div>
-                        {formData.lessonType === 'group' && <div className="section-divider"><div className="section-title">Swimmer 2 Information</div><div className="form-group"><label>Swimmer Name *</label><input type="text" value={formData.swimmer2Name} onChange={(e) => setFormData({...formData, swimmer2Name: e.target.value})} className="form-input" placeholder="Enter swimmer name" /></div><div className="form-group"><label>Swimmer Birthday *</label><input type="date" value={formData.swimmer2Birthday} onChange={(e) => setFormData({...formData, swimmer2Birthday: e.target.value})} className="form-input" />{formData.swimmer2Birthday && <div style={{fontSize: '0.8rem', color: '#64748b', marginTop: '0.25rem'}}>Age: {calculateAge(formData.swimmer2Birthday)}</div>}</div></div>}
+                        <div className="required-legend">Fields marked with a red <span className="req">*</span> are required.</div>
+                        <div className="form-group"><label>Time Slot <span className="req">*</span></label><select value={selectedTime} onChange={(e) => setSelectedTime(e.target.value)} className="form-select">{getAvailableTimes(selectedDate).map(t => <option key={t} value={t}>{t}</option>)}</select><div className="field-hint">Lesson times become available as lessons are booked. If you'd like a time that isn't listed, please email <a href="mailto:coach.conor.mulligan@gmail.com" style={{color: '#1e40af'}}>Coach Conor</a>.</div></div>
+                        <div className="form-group"><label>Lesson Type <span className="req">*</span></label><select value={formData.lessonType} onChange={(e) => setFormData({...formData, lessonType: e.target.value})} className="form-select"><option value="private">Private (1 swimmer) - $40</option><option value="group">Group (2 swimmers) - $70</option></select></div>
+                        <div className="form-group"><label>Parent Name <span className="req">*</span></label><input type="text" value={formData.parentName} onChange={(e) => setFormData({...formData, parentName: e.target.value})} className="form-input" placeholder="Enter parent name" /></div>
+                        <div className="form-group"><label>Email <span className="req">*</span></label><input type="email" value={formData.email} onChange={(e) => { setFormData({...formData, email: e.target.value}); if (formErrors.email && validateEmail(e.target.value)) setFormErrors({...formErrors, email: null}); }} className={`form-input ${formErrors.email ? 'error' : ''}`} placeholder="example@email.com" />{formErrors.email && <div className="error-message">{formErrors.email}</div>}</div>
+                        <div className="form-group"><label>Phone Number <span className="req">*</span></label><input type="tel" value={formData.phone} onChange={(e) => { const f = formatPhoneNumber(e.target.value); setFormData({...formData, phone: f}); if (formErrors.phone && validatePhone(f)) setFormErrors({...formErrors, phone: null}); }} className={`form-input ${formErrors.phone ? 'error' : ''}`} placeholder="(555) 123-4567" />{formErrors.phone && <div className="error-message">{formErrors.phone}</div>}</div>
+                        <div className="section-divider"><div className="section-title">Swimmer 1 Information</div><div className="form-group"><label>Swimmer Name <span className="req">*</span></label><input type="text" value={formData.swimmer1Name} onChange={(e) => setFormData({...formData, swimmer1Name: e.target.value})} className="form-input" placeholder="Enter swimmer name" /></div><div className="form-group"><label>Swimmer Birthday <span className="req">*</span></label><input type="date" value={formData.swimmer1Birthday} onChange={(e) => setFormData({...formData, swimmer1Birthday: e.target.value})} className="form-input" />{formData.swimmer1Birthday && <div style={{fontSize: '0.8rem', color: '#64748b', marginTop: '0.25rem'}}>Age: {calculateAge(formData.swimmer1Birthday)}</div>}</div></div>
+                        {formData.lessonType === 'group' && <div className="section-divider"><div className="section-title">Swimmer 2 Information</div><div className="form-group"><label>Swimmer Name <span className="req">*</span></label><input type="text" value={formData.swimmer2Name} onChange={(e) => setFormData({...formData, swimmer2Name: e.target.value})} className="form-input" placeholder="Enter swimmer name" /></div><div className="form-group"><label>Swimmer Birthday <span className="req">*</span></label><input type="date" value={formData.swimmer2Birthday} onChange={(e) => setFormData({...formData, swimmer2Birthday: e.target.value})} className="form-input" />{formData.swimmer2Birthday && <div style={{fontSize: '0.8rem', color: '#64748b', marginTop: '0.25rem'}}>Age: {calculateAge(formData.swimmer2Birthday)}</div>}</div></div>}
                         <div className="btn-row"><button onClick={handleBookClick} disabled={!formData.parentName || !formData.email || !formData.phone || !formData.swimmer1Name || !formData.swimmer1Birthday || (formData.lessonType === 'group' && (!formData.swimmer2Name || !formData.swimmer2Birthday))} className="btn btn-success">Book</button><button onClick={() => { resetForm(); setSelectedTime(''); setSelectedDate(null); clearLookup(); }} className="btn btn-secondary">Cancel</button></div>
                     </div>
                     );
@@ -857,8 +873,8 @@ END:VEVENT
                         <div style={{width: '60px', height: '60px', background: '#d1fae5', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem'}}>
                             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="3"><path d="M20 6L9 17l-5-5"/></svg>
                         </div>
-                        <h4 style={{color: '#059669'}}>Booking Confirmed!</h4>
-                        <p style={{color: '#64748b', marginBottom: '1.5rem'}}>Your {bookedDatesForCalendar.length} lesson{bookedDatesForCalendar.length > 1 ? 's have' : ' has'} been booked. A confirmation email has been sent.</p>
+                        <h4 style={{color: '#059669'}}>Your lessons are booked!</h4>
+                        <p style={{color: '#475569', marginBottom: '1.5rem', lineHeight: 1.5, textAlign: 'left'}}>An email has been sent confirming all the details of your upcoming lessons. If you do not see it, check your spam folder. Otherwise, reach out to <a href="mailto:coach.conor.mulligan@gmail.com" style={{color: '#1e40af', fontWeight: 600}}>Coach Conor</a> to confirm your lessons have been scheduled, or if any changes need to be made.</p>
                         
                         <div style={{background: '#f1f5f9', padding: '1rem', borderRadius: '10px', marginBottom: '1.5rem'}}>
                             <p style={{fontWeight: 600, marginBottom: '0.5rem', fontSize: '0.875rem'}}>Add to Calendar</p>
@@ -876,7 +892,7 @@ END:VEVENT
                         {reschedulingLessonInfo && <p style={{fontSize: '0.875rem', color: '#9a3412', marginBottom: '0.75rem'}}><strong>Lesson for:</strong> {reschedulingLessonInfo.swimmer1Name}{reschedulingLessonInfo.swimmer2Name && ` & ${reschedulingLessonInfo.swimmer2Name}`}</p>}
 
                         <p style={{fontSize: '0.95rem', color: '#7c2d12', marginBottom: '0.5rem'}}>
-                            <strong>{reschedulingConflict.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}{reschedulingLessonInfo?.time ? ` at ${reschedulingLessonInfo.time.toLowerCase().replace(' ', '')}` : ''} is already booked.</strong>
+                            <strong>{reschedulingConflict.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}{reschedulingLessonInfo?.time ? ` at ${reschedulingLessonInfo.time.toLowerCase().replace(' ', '')}` : ''} is unavailable.</strong>
                         </p>
                         <p style={{fontSize: '0.875rem', color: '#64748b', marginBottom: '0.25rem'}}>The next available day and time has been preselected for you. You may keep this time, select a different date/time above, or skip this conflict.</p>
                         <p style={{fontSize: '0.875rem', color: '#64748b'}}>Green highlighted days are in the same week as the conflict.</p>

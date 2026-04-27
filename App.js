@@ -1774,7 +1774,7 @@ END:VEVENT
                                                 <div>
                                                     <h4 style={{margin: '0 0 0.75rem 0', fontSize: '0.875rem', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em'}}>Lesson History</h4>
                                                     <div style={{maxHeight: '250px', overflowY: 'auto'}}>
-                                                        {selectedStudent.lessons.slice().reverse().map((lesson, i) => {
+                                                        {selectedStudent.lessons.slice().sort((a, b) => a.date - b.date).map((lesson, i) => {
                                                             const isPast = lesson.date < new Date();
                                                             return (
                                                                 <div key={i} style={{

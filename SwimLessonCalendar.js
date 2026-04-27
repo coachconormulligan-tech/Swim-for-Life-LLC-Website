@@ -702,9 +702,10 @@ END:VEVENT
                             isInConflictWeek = date >= weekStart && date <= weekEnd;
                         }
                         
-                        // Only count active (non-cancelled) lessons at the selected pool
-                        const bookedCount = getActiveLessons(dateKey).filter(l => !selectedPool || l.poolId === selectedPool).length;
-                        const maxForDay = getLessonTimesForDate(year, month, day).length;
+                        // Only count active (non-cancelled) lessons at the selected pool that fall within listed available times
+                        const dayTimesForCount = getLessonTimesForDate(year, month, day);
+                        const bookedCount = getActiveLessons(dateKey).filter(l => (!selectedPool || l.poolId === selectedPool) && dayTimesForCount.includes(l.time)).length;
+                        const maxForDay = dayTimesForCount.length;
                         const totalBars = Math.min(bookedCount + 1, maxForDay);
                         
                         let cn = 'day-cell';

@@ -1,0 +1,170 @@
+================================================================
+HTML CODE NAVIGATION GUIDE - Swim for Life, LLC
+================================================================
+This guide helps quickly locate code sections for edits.
+The codebase is split across multiple files for easier navigation.
+
+================================================================
+FILE STRUCTURE OVERVIEW
+================================================================
+
+index.html          - Slim shell: loads dependencies and all JS/CSS files
+styles.css          - All CSS styles
+firebase-config.js  - Firebase & EmailJS initialization (plain JS)
+constants.js        - Shared constants, icons, and utility functions (Babel/JSX)
+App.js              - Main App component: state, admin dashboard, routing
+AdminSchedulingPanel.js - Admin availability/scheduling settings component
+SwimLessonCalendar.js   - Customer-facing booking calendar component
+
+================================================================
+FILE DETAILS
+================================================================
+
+INDEX.HTML (~27 lines)
+- External library CDN links (React, Firebase, EmailJS, SheetJS, Babel)
+- Google Fonts link
+- CSS stylesheet link
+- Script loading order (firebase-config → constants → components → App → render)
+
+STYLES.CSS
+- Global styles, hero, pricing, calendar, modals, admin
+- Day cell states (selected, past, blocked, conflict, today)
+- Booking panel, form inputs, buttons
+- Admin panel, tabs, tables, stats
+- Responsive breakpoints (768px, 640px)
+
+FIREBASE-CONFIG.JS
+- Firebase initialization with project config
+- Firestore database reference (global var `db`)
+- EmailJS initialization
+
+CONSTANTS.JS
+- React hooks destructuring (useState, useEffect, useCallback)
+- ChevronLeft/ChevronRight icon components
+- DAYS, DAYS_FULL arrays
+- MAX_LESSONS, ALL_LESSON_TIMES, DEFAULT_LESSON_TIMES
+- calculateAge() and formatBirthday() helper functions
+
+APP.JS (~1570 lines)
+Main App component containing:
+- State Management: 27 useState hooks for UI, data, forms, admin
+- Firebase Data Loading: useEffect for loading bookings, settings, notes
+- Save Functions: saveLessons, saveCancelled, saveSettings, saveStudentNotes
+- Admin Authentication: URL param check (?admin=swimforlife2026)
+- Booking Logic: isDateBlocked, getFirstAvailableDate, toggleBlockedDate
+- Lesson Management: startEditingLesson, saveEditedLesson, updateStudentContact
+- Data Aggregation: getAllLessons, getAllStudents, revenue calculations
+- Export Functions: exportToExcel, printSchedule, exportToCalendar
+- Admin Dashboard UI:
+  - Upcoming Lessons tab (stats, table, edit/cancel)
+  - Weekly View tab (7-day calendar grid)
+  - Revenue tab (weekly/monthly charts, year-over-year)
+  - Students tab (search, detail view, notes, lesson history)
+  - Availability tab (delegates to AdminSchedulingPanel)
+- Modals: cancel confirmation, lesson edit, reset data
+- Public UI: hero section, pricing cards, calendar section, footer
+
+ADMINSCHEDULINGPANEL.JS (~280 lines)
+Admin availability management:
+- Date window controls (start/end date)
+- Calendar with clickable weekday headers and dates
+- Block/unblock individual dates and weekdays
+- Per-weekday time slot configuration
+- Time slot editor (add, remove, reorder)
+- Warning modal for editing days with existing lessons
+
+SWIMLESSONCALENDAR.JS (~840 lines)
+Customer-facing booking interface:
+- Email lookup for returning customers
+- Swimmer selection (single or group)
+- Calendar month view with availability indicators
+- Booking form (parent info, swimmer info, contact)
+- Single and weekly booking modes
+- Conflict detection and rescheduling flow
+- Booking confirmation modal
+- Success modal with ICS calendar download
+- Email notifications (customer + admin)
+
+================================================================
+SCRIPT LOADING ORDER
+================================================================
+
+Scripts must load in this order (each depends on the previous):
+
+1. External CDN libraries (React, Firebase, etc.)
+2. firebase-config.js - sets up global `db` and `firebaseReady` vars
+3. constants.js - defines shared constants used by all components
+4. AdminSchedulingPanel.js - used by App.js
+5. SwimLessonCalendar.js - used by App.js
+6. App.js - main component, references the above two
+7. ReactDOM.render (inline in index.html)
+
+================================================================
+COMMON EDIT SCENARIOS
+================================================================
+
+1. CHANGE CALENDAR APPEARANCE
+   - Day cell styling: styles.css (search for .day-cell)
+   - Calendar grid: styles.css (search for .days-grid)
+   - Colors: styles.css (search for hex codes)
+
+2. MODIFY BOOKING FLOW
+   - Form validation: SwimLessonCalendar.js (handleBookClick)
+   - Submit handler: SwimLessonCalendar.js (confirmBooking)
+   - Email sending: SwimLessonCalendar.js (sendBookingEmails)
+
+3. ADJUST TIME SLOTS
+   - Available times logic: SwimLessonCalendar.js (getAvailableTimes)
+   - Default times: constants.js (DEFAULT_LESSON_TIMES, ALL_LESSON_TIMES)
+   - Admin time config: AdminSchedulingPanel.js
+
+4. UPDATE PRICING
+   - Price card display: App.js (search for price-card)
+   - Pricing CSS: styles.css (search for .pricing)
+
+5. ADMIN FUNCTIONS
+   - Authentication: App.js (search for admin=swimforlife2026)
+   - Block dates: App.js (toggleBlockedDate, toggleBlockedWeekday)
+   - Cancel bookings: App.js (confirmCancellation, cancelSingleLesson)
+   - Excel export: App.js (exportToExcel)
+
+6. STUDENT MANAGEMENT
+   - Student list/detail: App.js (adminTab === 'students')
+   - Student data aggregation: App.js (getAllStudents)
+   - Student notes: App.js (updateStudentNote)
+
+7. EMAIL NOTIFICATIONS
+   - EmailJS setup: firebase-config.js
+   - Send function: SwimLessonCalendar.js (sendBookingEmails)
+
+================================================================
+FIREBASE COLLECTIONS STRUCTURE
+================================================================
+
+'swimLessons' collection, documents:
+- 'lessons': { data: { "2026-0-15": [{ time, parentName, ... }], ... } }
+- 'cancelled': { data: ["2026-0-15-4:00 PM", ...] }
+- 'settings': { blockedDates, blockedWeekdays, dateWindowStart, dateWindowEnd, weekdayTimeSettings }
+- 'studentNotes': { data: { "student name": "note text", ... } }
+
+================================================================
+COLOR SCHEME REFERENCE
+================================================================
+
+Primary Blues:
+- #0f172a (dark navy)
+- #1e40af (primary blue)
+- #3b82f6 (bright blue)
+- #93c5fd (light blue)
+
+Grays:
+- #64748b (medium gray)
+- #cbd5e1 (light gray)
+- #f8fafc (background gray)
+
+Status Colors:
+- #059669 (success green)
+- #dc2626 (error/conflict red)
+- #fcd34d (warning yellow)
+
+================================================================

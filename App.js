@@ -119,7 +119,10 @@
                     }
                     
                     const notesDoc = await db.collection('swimLessons').doc('studentNotes').get();
-                    if (notesDoc.exists) setStudentNotes(notesDoc.data().data || {});
+                    if (notesDoc.exists) {
+                        setStudentNotes(notesDoc.data().data || {});
+                        setManualStudents(notesDoc.data().manualStudents || []);
+                    }
 
                     const poolsDoc = await db.collection('swimLessons').doc('pools').get();
                     if (poolsDoc.exists) setPools(poolsDoc.data().data || []);
@@ -127,8 +130,6 @@
                     const poolSettingsDoc = await db.collection('swimLessons').doc('poolSettings').get();
                     if (poolSettingsDoc.exists) setPoolSettings(poolSettingsDoc.data().data || {});
 
-                    const manualStudentsDoc = await db.collection('swimLessons').doc('manualStudents').get();
-                    if (manualStudentsDoc.exists) setManualStudents(manualStudentsDoc.data().data || []);
                 } catch (error) {
                     console.error('Error loading data:', error);
                 }
@@ -170,7 +171,7 @@
         };
         const saveManualStudents = async (students) => {
             if (!db) return;
-            try { await db.collection('swimLessons').doc('manualStudents').set({ data: students }); }
+            try { await db.collection('swimLessons').doc('studentNotes').set({ manualStudents: students }, { merge: true }); }
             catch (e) { console.error('Error saving manual students:', e); }
         };
         const savePools = async (p) => {

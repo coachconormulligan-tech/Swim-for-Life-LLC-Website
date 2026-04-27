@@ -737,6 +737,8 @@ END:VEVENT
                     })}
                 </div>
 
+                <div className="legend"><div className="legend-item"><div className="legend-bar" style={{background: '#cbd5e1'}}></div><span>Booked</span></div><div className="legend-item"><div className="legend-bar" style={{background: '#93c5fd'}}></div><span>Available</span></div></div>
+
                 {showBookingForm && !reschedulingConflict && selectedDate && (() => {
                     const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][new Date(selectedDate.year, selectedDate.month, selectedDate.day).getDay()];
                     return (
@@ -940,7 +942,6 @@ END:VEVENT
                     <div className="modal-overlay"><div className="modal"><h4 className="warning">Scheduling Conflicts Detected</h4><p>Weekly lesson booked for non-conflicting dates. The following have conflicts:</p><div className="conflict-list">{conflictDates.map((c, i) => <div key={i} className="conflict-date">{c.dateString}</div>)}</div><p style={{fontSize: '0.875rem', marginBottom: '1rem'}}>Reschedule each conflicting date individually?</p><div className="btn-row"><button onClick={() => handleConflictResolution(false)} className="btn btn-primary">Reschedule Conflicts</button><button onClick={() => handleConflictResolution(true)} className="btn btn-secondary">Skip All</button></div></div></div>
                 )}
 
-                <div className="legend"><div className="legend-item"><div className="legend-bar" style={{background: '#cbd5e1'}}></div><span>Booked</span></div><div className="legend-item"><div className="legend-bar" style={{background: '#93c5fd'}}></div><span>Available</span></div></div>
                 </> /* end pool-gated calendar section */}
             </div>
         );

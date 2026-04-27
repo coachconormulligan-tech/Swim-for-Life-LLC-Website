@@ -1,28 +1,116 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Swim for Life, LLC</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
-    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MTG Layer Inspector - CR 613</title>
+  <link rel="stylesheet" href="styles.css?v=27">
 </head>
 <body>
-    <div id="app-root"></div>
-    <script src="firebase-config.js"></script>
-    <script type="text/babel" src="constants.js"></script>
-    <script type="text/babel" src="AdminSchedulingPanel.js"></script>
-    <script type="text/babel" src="SwimLessonCalendar.js"></script>
-    <script type="text/babel" src="App.js"></script>
-    <script type="text/babel">
-    ReactDOM.render(<App />, document.getElementById('app-root'));
-    </script>
+
+  <!-- [KEY: HEADER] -->
+  <header class="app-header">
+    <h1>Layer Inspector</h1>
+    <span class="subtitle">CR 613 Continuous Effects Evaluator</span>
+    <div class="header-controls">
+      <button id="mode-toggle" class="btn btn-mode">Teaching Mode</button>
+      <button class="btn btn-clear btn-sm" onclick="Battlefield.clear(); renderAll();">Clear All</button>
+    </div>
+  </header>
+  <!-- [END: HEADER] -->
+
+  <!-- [KEY: APP-LAYOUT] -->
+  <div class="app-layout">
+
+    <!-- LEFT PANEL: Search + Timestamps -->
+    <div class="panel left-panel">
+      <!-- Card Search -->
+      <div class="search-section">
+        <div class="panel-title">Card Search</div>
+        <div class="search-bar" style="margin-top:8px;">
+          <input type="text" id="card-search-input" placeholder="Search card name…" autocomplete="off">
+        </div>
+        <div class="search-toggle-row">
+          <label><input type="checkbox" id="search-token-toggle"> Search Tokens</label>
+        </div>
+        <div id="search-results"></div>
+      </div>
+
+      <!-- Timestamp Order -->
+      <div class="timestamp-section" id="timestamp-section">
+        <div class="panel-title ts-panel-header" onclick="toggleTimestampExpand()">
+          <span>Timestamp Order</span>
+          <span class="ts-expand-toggle" id="ts-expand-icon">&#x25BC;</span>
+        </div>
+        <div class="panel-body" id="timestamp-list"></div>
+      </div>
+
+      <!-- Resize handle for timestamp section -->
+      <div class="section-v-resize" data-resize-above=".timestamp-section"></div>
+
+      <!-- Command Zone -->
+      <div class="commander-section">
+        <div class="panel-title">Command Zone</div>
+        <div class="panel-body" id="commander-panel"></div>
+      </div>
+
+      <!-- Emblems -->
+      <div class="emblem-section">
+        <div class="panel-title">Emblems</div>
+        <div class="panel-body" id="emblem-panel"></div>
+      </div>
+
+      <!-- Graveyard -->
+      <div class="graveyard-section">
+        <div class="panel-title">Graveyard</div>
+        <div class="panel-body" id="graveyard-panel"></div>
+      </div>
+
+      <!-- Exile -->
+      <div class="exile-section">
+        <div class="panel-title">Exile</div>
+        <div class="panel-body" id="exile-panel"></div>
+      </div>
+
+      <!-- Game State Tracking -->
+      <div class="game-state-section">
+        <div class="panel-title">Game State</div>
+        <div class="panel-body" id="game-state-panel"></div>
+      </div>
+
+      <!-- Counters -->
+      <div id="counter-section" class="counter-section" style="display:none;">
+        <div class="panel-title">Counters</div>
+        <div class="panel-body" id="counter-panel"></div>
+      </div>
+    </div>
+
+    <!-- Resize handle -->
+    <div class="panel-resize-handle" id="left-resize-handle"></div>
+
+    <!-- CENTER PANEL: Battlefield -->
+    <div class="panel center-panel">
+      <div class="battlefield-section">
+        <div class="panel-title">Battlefield</div>
+        <div class="player-tabs" id="player-tabs"></div>
+        <div id="battlefield"></div>
+      </div>
+    </div>
+
+    <!-- RIGHT PANEL: Layer Inspector -->
+    <div class="panel">
+      <div class="panel-title">Layer Inspector</div>
+      <div class="panel-body" id="inspector"></div>
+    </div>
+
+  </div>
+  <!-- [END: APP-LAYOUT] -->
+
+  <!-- Scripts in dependency order -->
+  <script src="data.js?v=16"></script>
+  <script src="engine.js?v=33"></script>
+  <script src="cards.js?v=61"></script>
+  <script src="ui.js?v=53"></script>
+
 </body>
 </html>

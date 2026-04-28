@@ -1932,8 +1932,8 @@ END:VEVENT
                                     };
                                     const editAvailableTimes = getAvailableTimesForEdit(editLessonData.newDateKey, editLessonData.poolId);
                                     const handleEditDateChange = (e) => {
-                                        const d = new Date(e.target.value);
-                                        const newDateKey = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+                                        const [yr, mo, dy] = e.target.value.split('-').map(Number);
+                                        const newDateKey = `${yr}-${mo - 1}-${dy}`;
                                         const available = getAvailableTimesForEdit(newDateKey, editLessonData.poolId);
                                         const timeStillValid = available.includes(editLessonData.time);
                                         setEditLessonData({...editLessonData, newDateKey, time: timeStillValid ? editLessonData.time : (available[0] || editLessonData.time)});

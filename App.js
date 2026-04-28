@@ -655,8 +655,8 @@
             if (!selectedStudentKey || !newLessonData.date || !newLessonData.time) return;
             const studentRecord = getAllStudents().find(s => s.name && s.name.toLowerCase().trim() === selectedStudentKey);
             if (!studentRecord) return;
-            const d = new Date(newLessonData.date);
-            const dateKey = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+            const [yr, mo, dy] = newLessonData.date.split('-').map(Number);
+            const dateKey = `${yr}-${mo - 1}-${dy}`;
             const parent = studentRecord.parents && studentRecord.parents[0] ? studentRecord.parents[0] : { name: '', email: '', phone: '' };
             const lesson = {
                 time: newLessonData.time,
@@ -2113,9 +2113,9 @@ END:VEVENT
                                 {(() => {
                                     const getAvailableTimesForAdd = (date, poolId) => {
                                         if (!date) return ALL_LESSON_TIMES;
-                                        const d = new Date(date);
-                                        const dateKey = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-                                        const lessons = bookedLessons[dateKey] || [];
+                                        const [yr, mo, dy] = date.split('-').map(Number);
+                                        const dateKey = `${yr}-${mo - 1}-${dy}`;
+                                        const lessons = (bookedLessons[dateKey] || []).filter(l => !cancelledLessons.has(`${dateKey}-${l.time}`));
                                         const taken = poolId
                                             ? lessons.filter(l => l.poolId === poolId).map(l => l.time)
                                             : lessons.map(l => l.time);

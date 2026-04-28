@@ -2079,34 +2079,57 @@ END:VEVENT
                             <div className="modal" style={{maxWidth: '460px'}}>
                                 <h4 style={{color: '#1e40af'}}>Add Lesson</h4>
                                 <p style={{color: '#64748b', fontSize: '0.875rem', marginBottom: '1rem'}}>Manually schedule a lesson for this student.</p>
-                                <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem'}}>
-                                    <div className="form-group" style={{margin: 0}}>
-                                        <label style={{fontSize: '0.8rem', fontWeight: 600}}>Date <span style={{color: '#dc2626'}}>*</span></label>
-                                        <input type="date" value={newLessonData.date} onChange={(e) => setNewLessonData({...newLessonData, date: e.target.value})} className="form-input" />
-                                    </div>
-                                    <div className="form-group" style={{margin: 0}}>
-                                        <label style={{fontSize: '0.8rem', fontWeight: 600}}>Time <span style={{color: '#dc2626'}}>*</span></label>
-                                        <select value={newLessonData.time} onChange={(e) => setNewLessonData({...newLessonData, time: e.target.value})} className="form-select">
-                                            {ALL_LESSON_TIMES.map(t => <option key={t} value={t}>{t}</option>)}
-                                        </select>
-                                    </div>
-                                </div>
-                                <div className="form-group" style={{margin: '0.75rem 0 0 0'}}>
-                                    <label style={{fontSize: '0.8rem', fontWeight: 600}}>Lesson Type</label>
-                                    <select value={newLessonData.lessonType} onChange={(e) => setNewLessonData({...newLessonData, lessonType: e.target.value})} className="form-select">
-                                        <option value="private">Private ($40)</option>
-                                        <option value="group">Group ($70)</option>
-                                    </select>
-                                </div>
-                                {pools.length > 0 && (
-                                    <div className="form-group" style={{margin: '0.75rem 0 0 0'}}>
-                                        <label style={{fontSize: '0.8rem', fontWeight: 600}}>Pool</label>
-                                        <select value={newLessonData.poolId} onChange={(e) => setNewLessonData({...newLessonData, poolId: e.target.value})} className="form-select">
-                                            <option value="">— No pool assigned —</option>
-                                            {pools.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                        </select>
-                                    </div>
-                                )}
+                                {(() => {
+                                    const bookedTimesForDate = newLessonData.date
+                                        ? ((d => (bookedLessons[`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`] || []).map(l => l.time))(new Date(newLessonData.date)))
+                                        : [];
+                                    const availableTimes = ALL_LESSON_TIMES.filter(t => !bookedTimesForDate.includes(t));
+                                    const handleDateChange = (e) => {
+                                        const newDate = e.target.value;
+                                        const d = new Date(newDate);
+                                        const dateKey = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+                                        const taken = (bookedLessons[dateKey] || []).map(l => l.time);
+                                        const available = ALL_LESSON_TIMES.filter(t => !taken.includes(t));
+                                        const timeStillValid = available.includes(newLessonData.time);
+                                        setNewLessonData({...newLessonData, date: newDate, time: timeStillValid ? newLessonData.time : (available[0] || '')});
+                                    };
+                                    return (
+                                        <>
+                                        <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem'}}>
+                                            <div className="form-group" style={{margin: 0}}>
+                                                <label style={{fontSize: '0.8rem', fontWeight: 600}}>Date <span style={{color: '#dc2626'}}>*</span></label>
+                                                <input type="date" value={newLessonData.date} onChange={handleDateChange} className="form-input" />
+                                            </div>
+                                            <div className="form-group" style={{margin: 0}}>
+                                                <label style={{fontSize: '0.8rem', fontWeight: 600}}>Time <span style={{color: '#dc2626'}}>*</span></label>
+                                                {availableTimes.length > 0 ? (
+                                                    <select value={newLessonData.time} onChange={(e) => setNewLessonData({...newLessonData, time: e.target.value})} className="form-select">
+                                                        {availableTimes.map(t => <option key={t} value={t}>{t}</option>)}
+                                                    </select>
+                                                ) : (
+                                                    <div style={{color: '#dc2626', fontSize: '0.8rem', padding: '0.5rem 0', fontWeight: 500}}>All slots taken for this date.</div>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="form-group" style={{margin: '0.75rem 0 0 0'}}>
+                                            <label style={{fontSize: '0.8rem', fontWeight: 600}}>Lesson Type</label>
+                                            <select value={newLessonData.lessonType} onChange={(e) => setNewLessonData({...newLessonData, lessonType: e.target.value})} className="form-select">
+                                                <option value="private">Private ($40)</option>
+                                                <option value="group">Group ($70)</option>
+                                            </select>
+                                        </div>
+                                        {pools.length > 0 && (
+                                            <div className="form-group" style={{margin: '0.75rem 0 0 0'}}>
+                                                <label style={{fontSize: '0.8rem', fontWeight: 600}}>Pool</label>
+                                                <select value={newLessonData.poolId} onChange={(e) => setNewLessonData({...newLessonData, poolId: e.target.value})} className="form-select">
+                                                    <option value="">— No pool assigned —</option>
+                                                    {pools.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                                </select>
+                                            </div>
+                                        )}
+                                        </>
+                                    );
+                                })()}
                                 <div className="btn-row" style={{marginTop: '1.5rem'}}>
                                     <button onClick={addManualLesson} disabled={!newLessonData.date || !newLessonData.time} className="btn btn-success">Save Lesson</button>
                                     <button onClick={() => setShowAddLessonModal(false)} className="btn btn-secondary">Cancel</button>

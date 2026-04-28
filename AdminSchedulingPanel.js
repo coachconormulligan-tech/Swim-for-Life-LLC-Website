@@ -187,14 +187,15 @@
         const effDateOverrides = poolData ? (poolData.dateTimeSettings || {}) : (dateTimeSettings || {});
         const effBlockedDatesList = poolData ? (poolData.blockedDates || []) : null; // null means use global Set
 
-        const writeDateOverrides = (newOverrides) => {
+        const writeDateOverrides = (newOverrides, blockedOverride = null) => {
             if (selectedAdminPool) {
                 const cur = poolSettings && poolSettings[selectedAdminPool] ? poolSettings[selectedAdminPool] : {};
                 const newPs = { ...(poolSettings || {}), [selectedAdminPool]: { ...cur, dateTimeSettings: newOverrides } };
                 setPoolSettings(newPs); savePoolSettings(newPs);
             } else {
+                const effectiveBlocked = blockedOverride !== null ? blockedOverride : blockedDates;
                 setDateTimeSettings(newOverrides);
-                saveSettings(blockedDates, blockedWeekdays, dateWindowStart, dateWindowEnd, weekdayTimeSettings, newOverrides);
+                saveSettings(effectiveBlocked, blockedWeekdays, dateWindowStart, dateWindowEnd, weekdayTimeSettings, newOverrides);
             }
         };
 
@@ -246,7 +247,21 @@
             } else {
                 delete newOverrides[dateKey];
             }
-            writeDateOverrides(newOverrides);
+            // React state updates from setDateBlockedFlag are async, so blockedDates is still
+            // stale here. Compute the expected new set and pass it so writeDateOverrides doesn't
+            // overwrite the blocked-date change. Skip this when a cancel modal will be shown
+            // (active lessons present) — in that case setDateBlockedFlag made no state change.
+            let blockedForSave = null;
+            if (!selectedAdminPool) {
+                const hasActiveLessons = (bookedLessons[dateKey] || [])
+                    .some(l => !cancelledLessons.has(`${dateKey}-${l.time}`));
+                if (!hasActiveLessons) {
+                    blockedForSave = new Set(blockedDates);
+                    if (dateEditBlocked) blockedForSave.add(dateKey);
+                    else blockedForSave.delete(dateKey);
+                }
+            }
+            writeDateOverrides(newOverrides, blockedForSave);
             closeDateEditor();
         };
 

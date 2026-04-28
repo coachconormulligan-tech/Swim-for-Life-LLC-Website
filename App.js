@@ -1917,39 +1917,67 @@ END:VEVENT
                                     Original: {editingLesson.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} at {editingLesson.time}
                                 </p>
                                 
+                                {(() => {
+                                    const getAvailableTimesForEdit = (dateKey, poolId) => {
+                                        const lessons = bookedLessons[dateKey] || [];
+                                        const taken = lessons
+                                            .filter(l => {
+                                                if (poolId && l.poolId !== poolId) return false;
+                                                // exclude the lesson being edited from its original slot
+                                                if (dateKey === editingLesson.dateKey && l.time === editingLesson.time) return false;
+                                                return true;
+                                            })
+                                            .map(l => l.time);
+                                        return ALL_LESSON_TIMES.filter(t => !taken.includes(t));
+                                    };
+                                    const editAvailableTimes = getAvailableTimesForEdit(editLessonData.newDateKey, editLessonData.poolId);
+                                    const handleEditDateChange = (e) => {
+                                        const d = new Date(e.target.value);
+                                        const newDateKey = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+                                        const available = getAvailableTimesForEdit(newDateKey, editLessonData.poolId);
+                                        const timeStillValid = available.includes(editLessonData.time);
+                                        setEditLessonData({...editLessonData, newDateKey, time: timeStillValid ? editLessonData.time : (available[0] || editLessonData.time)});
+                                    };
+                                    const handleEditPoolChange = (e) => {
+                                        const newPoolId = e.target.value;
+                                        const available = getAvailableTimesForEdit(editLessonData.newDateKey, newPoolId);
+                                        const timeStillValid = available.includes(editLessonData.time);
+                                        setEditLessonData({...editLessonData, poolId: newPoolId, time: timeStillValid ? editLessonData.time : (available[0] || editLessonData.time)});
+                                    };
+                                    return (
                                 <div style={{display: 'grid', gap: '0.75rem'}}>
                                     <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem'}}>
                                         <div className="form-group" style={{margin: 0}}>
                                             <label style={{fontSize: '0.75rem', fontWeight: 600}}>Date</label>
-                                            <input 
-                                                type="date" 
+                                            <input
+                                                type="date"
                                                 value={(() => {
                                                     const [y, m, d] = editLessonData.newDateKey?.split('-').map(Number) || [];
                                                     if (!y) return '';
                                                     return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
                                                 })()}
-                                                onChange={(e) => {
-                                                    const d = new Date(e.target.value);
-                                                    const newDateKey = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-                                                    setEditLessonData({...editLessonData, newDateKey});
-                                                }}
+                                                onChange={handleEditDateChange}
                                                 className="form-input"
                                                 style={{margin: 0}}
                                             />
                                         </div>
                                         <div className="form-group" style={{margin: 0}}>
                                             <label style={{fontSize: '0.75rem', fontWeight: 600}}>Time</label>
-                                            <select 
-                                                value={editLessonData.time} 
-                                                onChange={(e) => setEditLessonData({...editLessonData, time: e.target.value})}
-                                                className="form-select"
-                                                style={{margin: 0}}
-                                            >
-                                                {ALL_LESSON_TIMES.map(t => <option key={t} value={t}>{t}</option>)}
-                                            </select>
+                                            {editAvailableTimes.length > 0 ? (
+                                                <select
+                                                    value={editLessonData.time}
+                                                    onChange={(e) => setEditLessonData({...editLessonData, time: e.target.value})}
+                                                    className="form-select"
+                                                    style={{margin: 0}}
+                                                >
+                                                    {editAvailableTimes.map(t => <option key={t} value={t}>{t}</option>)}
+                                                </select>
+                                            ) : (
+                                                <div style={{color: '#dc2626', fontSize: '0.75rem', padding: '0.5rem 0', fontWeight: 500}}>All slots taken for this date.</div>
+                                            )}
                                         </div>
                                     </div>
-                                    
+
                                     <div className="form-group" style={{margin: 0}}>
                                         <label style={{fontSize: '0.75rem', fontWeight: 600}}>Lesson Type</label>
                                         <select
@@ -1968,7 +1996,7 @@ END:VEVENT
                                             <label style={{fontSize: '0.75rem', fontWeight: 600}}>Pool</label>
                                             <select
                                                 value={editLessonData.poolId || ''}
-                                                onChange={(e) => setEditLessonData({...editLessonData, poolId: e.target.value})}
+                                                onChange={handleEditPoolChange}
                                                 className="form-select"
                                                 style={{margin: 0}}
                                             >
@@ -2028,10 +2056,13 @@ END:VEVENT
                                         </div>
                                     )}
                                 </div>
-                                
+                                    );
+                                })()}
+
                                 <div className="btn-row" style={{marginTop: '1.5rem'}}>
                                     <button onClick={saveEditedLesson} className="btn btn-success">Save Changes</button>
-                                    <button onClick={() => { setEditingLesson(null); setEditLessonData({}); }} className="btn btn-secondary">Cancel</button>
+                                    <button onClick={() => { setEditingLesson(null); setEditLessonData({}); cancelSingleLesson(editingLesson.dateKey, editingLesson); }} className="btn btn-danger">Cancel Lesson</button>
+                                    <button onClick={() => { setEditingLesson(null); setEditLessonData({}); }} className="btn btn-secondary">Close</button>
                                 </div>
                             </div>
                         </div>
@@ -2080,18 +2111,28 @@ END:VEVENT
                                 <h4 style={{color: '#1e40af'}}>Add Lesson</h4>
                                 <p style={{color: '#64748b', fontSize: '0.875rem', marginBottom: '1rem'}}>Manually schedule a lesson for this student.</p>
                                 {(() => {
-                                    const bookedTimesForDate = newLessonData.date
-                                        ? ((d => (bookedLessons[`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`] || []).map(l => l.time))(new Date(newLessonData.date)))
-                                        : [];
-                                    const availableTimes = ALL_LESSON_TIMES.filter(t => !bookedTimesForDate.includes(t));
+                                    const getAvailableTimesForAdd = (date, poolId) => {
+                                        if (!date) return ALL_LESSON_TIMES;
+                                        const d = new Date(date);
+                                        const dateKey = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+                                        const lessons = bookedLessons[dateKey] || [];
+                                        const taken = poolId
+                                            ? lessons.filter(l => l.poolId === poolId).map(l => l.time)
+                                            : lessons.map(l => l.time);
+                                        return ALL_LESSON_TIMES.filter(t => !taken.includes(t));
+                                    };
+                                    const availableTimes = getAvailableTimesForAdd(newLessonData.date, newLessonData.poolId);
                                     const handleDateChange = (e) => {
                                         const newDate = e.target.value;
-                                        const d = new Date(newDate);
-                                        const dateKey = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-                                        const taken = (bookedLessons[dateKey] || []).map(l => l.time);
-                                        const available = ALL_LESSON_TIMES.filter(t => !taken.includes(t));
+                                        const available = getAvailableTimesForAdd(newDate, newLessonData.poolId);
                                         const timeStillValid = available.includes(newLessonData.time);
                                         setNewLessonData({...newLessonData, date: newDate, time: timeStillValid ? newLessonData.time : (available[0] || '')});
+                                    };
+                                    const handlePoolChange = (e) => {
+                                        const newPoolId = e.target.value;
+                                        const available = getAvailableTimesForAdd(newLessonData.date, newPoolId);
+                                        const timeStillValid = available.includes(newLessonData.time);
+                                        setNewLessonData({...newLessonData, poolId: newPoolId, time: timeStillValid ? newLessonData.time : (available[0] || '')});
                                     };
                                     return (
                                         <>
@@ -2120,9 +2161,9 @@ END:VEVENT
                                         </div>
                                         {pools.length > 0 && (
                                             <div className="form-group" style={{margin: '0.75rem 0 0 0'}}>
-                                                <label style={{fontSize: '0.8rem', fontWeight: 600}}>Pool</label>
-                                                <select value={newLessonData.poolId} onChange={(e) => setNewLessonData({...newLessonData, poolId: e.target.value})} className="form-select">
-                                                    <option value="">— No pool assigned —</option>
+                                                <label style={{fontSize: '0.8rem', fontWeight: 600}}>Pool <span style={{color: '#dc2626'}}>*</span></label>
+                                                <select value={newLessonData.poolId} onChange={handlePoolChange} className="form-select">
+                                                    <option value="" disabled>— Select a pool —</option>
                                                     {pools.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                                 </select>
                                             </div>
@@ -2131,7 +2172,7 @@ END:VEVENT
                                     );
                                 })()}
                                 <div className="btn-row" style={{marginTop: '1.5rem'}}>
-                                    <button onClick={addManualLesson} disabled={!newLessonData.date || !newLessonData.time} className="btn btn-success">Save Lesson</button>
+                                    <button onClick={addManualLesson} disabled={!newLessonData.date || !newLessonData.time || (pools.length > 0 && !newLessonData.poolId)} className="btn btn-success">Save Lesson</button>
                                     <button onClick={() => setShowAddLessonModal(false)} className="btn btn-secondary">Cancel</button>
                                 </div>
                             </div>

@@ -323,8 +323,13 @@
                 const lessonDate = new Date(startDate); lessonDate.setDate(lessonDate.getDate() + i * 7);
                 if (endDate && lessonDate > endDate) break;
                 const dateKey = formatDateKey(lessonDate), booked = getActiveLessons(dateKey), blocked = isDateBlocked(lessonDate.getFullYear(), lessonDate.getMonth(), lessonDate.getDate(), selectedPool);
-                const maxForDay = getLessonTimesForDate(lessonDate.getFullYear(), lessonDate.getMonth(), lessonDate.getDate()).length;
-                if (blocked || booked.some(l => l.time === time) || booked.length >= maxForDay) conflicts.push({ date: lessonDate, dateString: lessonDate.toLocaleDateString(), dateKey });
+                const dayTimes = getLessonTimesForDate(lessonDate.getFullYear(), lessonDate.getMonth(), lessonDate.getDate());
+                const maxForDay = dayTimes.length;
+                // A slot that isn't offered on this date is treated as unavailable (i.e. a conflict),
+                // exactly like a slot that's already booked. This prevents booking a time (e.g. 4:00 PM
+                // from a custom day) onto later weeks that don't offer that time.
+                const timeOffered = dayTimes.includes(time);
+                if (blocked || !timeOffered || booked.some(l => l.time === time) || booked.length >= maxForDay) conflicts.push({ date: lessonDate, dateString: lessonDate.toLocaleDateString(), dateKey });
             }
             return conflicts;
         };

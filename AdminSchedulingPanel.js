@@ -1,4 +1,4 @@
-    const AdminSchedulingPanel = ({ blockedDates, blockedWeekdays, dateWindowStart, dateWindowEnd, handleStartDateChange, handleEndDateChange, setDateWindowStart, setDateWindowEnd, toggleBlockedDate, toggleBlockedWeekday, isDateBlocked, bookedLessons, cancelledLessons, firstAvailableDate, saveSettings, weekdayTimeSettings, setWeekdayTimeSettings, dateTimeSettings, setDateTimeSettings, pools, setPools, poolSettings, setPoolSettings, savePools, savePoolSettings, poolSaveError, setPoolSaveError }) => {
+    const AdminSchedulingPanel = ({ blockedDates, setBlockedDates, blockedWeekdays, dateWindowStart, dateWindowEnd, handleStartDateChange, handleEndDateChange, setDateWindowStart, setDateWindowEnd, toggleBlockedDate, toggleBlockedWeekday, isDateBlocked, bookedLessons, cancelledLessons, firstAvailableDate, saveSettings, weekdayTimeSettings, setWeekdayTimeSettings, dateTimeSettings, setDateTimeSettings, pools, setPools, poolSettings, setPoolSettings, savePools, savePoolSettings, poolSaveError, setPoolSaveError }) => {
         const [currentDate, setCurrentDate] = useState(new Date(firstAvailableDate.getFullYear(), firstAvailableDate.getMonth(), 1));
         const [editingWeekday, setEditingWeekday] = useState(null);
         const [tempTimes, setTempTimes] = useState([]);
@@ -187,33 +187,10 @@
         const effDateOverrides = poolData ? (poolData.dateTimeSettings || {}) : (dateTimeSettings || {});
         const effBlockedDatesList = poolData ? (poolData.blockedDates || []) : null; // null means use global Set
 
-        const writeDateOverrides = (newOverrides, blockedOverride = null) => {
-            if (selectedAdminPool) {
-                const cur = poolSettings && poolSettings[selectedAdminPool] ? poolSettings[selectedAdminPool] : {};
-                const newPs = { ...(poolSettings || {}), [selectedAdminPool]: { ...cur, dateTimeSettings: newOverrides } };
-                setPoolSettings(newPs); savePoolSettings(newPs);
-            } else {
-                const effectiveBlocked = blockedOverride !== null ? blockedOverride : blockedDates;
-                setDateTimeSettings(newOverrides);
-                saveSettings(effectiveBlocked, blockedWeekdays, dateWindowStart, dateWindowEnd, weekdayTimeSettings, newOverrides);
-            }
-        };
-
+        // Routes a global (no-pool) block toggle through toggleBlockedDate so the
+        // "cancel existing lessons" confirmation modal fires when needed.
         const setDateBlockedFlag = (dateKey, blocked) => {
-            if (selectedAdminPool) {
-                const cur = poolData?.blockedDates || [];
-                const next = blocked ? (cur.includes(dateKey) ? cur : [...cur, dateKey]) : cur.filter(d => d !== dateKey);
-                updatePoolSetting('blockedDates', next);
-            } else {
-                const newBlocked = new Set(blockedDates);
-                if (blocked) newBlocked.add(dateKey); else newBlocked.delete(dateKey);
-                // Use existing flow to catch "cancel existing lessons" confirmation when blocking
-                if (blocked && !blockedDates.has(dateKey)) {
-                    toggleBlockedDate(dateKey);
-                } else if (!blocked && blockedDates.has(dateKey)) {
-                    toggleBlockedDate(dateKey);
-                }
-            }
+            if (blocked !== blockedDates.has(dateKey)) toggleBlockedDate(dateKey);
         };
 
         const openDateEditor = (year, month, day) => {
@@ -238,45 +215,85 @@
         const saveDateEditor = () => {
             if (!editingDate) return;
             const { dateKey } = editingDate;
-            // Handle block/unblock
-            setDateBlockedFlag(dateKey, dateEditBlocked);
-            // Handle per-date time override
+            // Build the new per-date time override map
             const newOverrides = { ...effDateOverrides };
             if (dateEditCustomize) {
                 newOverrides[dateKey] = [...dateEditTimes];
             } else {
                 delete newOverrides[dateKey];
             }
-            // React state updates from setDateBlockedFlag are async, so blockedDates is still
-            // stale here. Compute the expected new set and pass it so writeDateOverrides doesn't
-            // overwrite the blocked-date change. Skip this when a cancel modal will be shown
-            // (active lessons present) — in that case setDateBlockedFlag made no state change.
-            let blockedForSave = null;
-            if (!selectedAdminPool) {
-                const hasActiveLessons = (bookedLessons[dateKey] || [])
-                    .some(l => !cancelledLessons.has(`${dateKey}-${l.time}`));
-                if (!hasActiveLessons) {
-                    blockedForSave = new Set(blockedDates);
-                    if (dateEditBlocked) blockedForSave.add(dateKey);
-                    else blockedForSave.delete(dateKey);
-                }
+
+            if (selectedAdminPool) {
+                // Pool case: write blockedDates AND dateTimeSettings together in a single
+                // setPoolSettings/savePoolSettings call. Splitting them into two updates makes
+                // the second read a stale `poolSettings` closure and overwrite the first
+                // (e.g. blocking a date got clobbered by the time-override write).
+                const cur = poolSettings && poolSettings[selectedAdminPool]
+                    ? poolSettings[selectedAdminPool]
+                    : { weekdayTimeSettings: {}, dateWindowStart: '', dateWindowEnd: '', blockedDates: [], blockedWeekdays: [] };
+                const curBlocked = cur.blockedDates || [];
+                const newBlocked = dateEditBlocked
+                    ? (curBlocked.includes(dateKey) ? curBlocked : [...curBlocked, dateKey])
+                    : curBlocked.filter(d => d !== dateKey);
+                const newPs = { ...(poolSettings || {}), [selectedAdminPool]: { ...cur, blockedDates: newBlocked, dateTimeSettings: newOverrides } };
+                setPoolSettings(newPs);
+                savePoolSettings(newPs);
+                closeDateEditor();
+                return;
             }
-            writeDateOverrides(newOverrides, blockedForSave);
+
+            // Global case. Blocking a date that has active lessons needs the cancel-lessons
+            // confirmation modal, so route that one case through toggleBlockedDate and let the
+            // modal finish the block. Save the time override now regardless.
+            const hasActiveLessons = (bookedLessons[dateKey] || [])
+                .some(l => !cancelledLessons.has(`${dateKey}-${l.time}`));
+            const willBlockWithLessons = dateEditBlocked && !blockedDates.has(dateKey) && hasActiveLessons;
+            if (willBlockWithLessons) {
+                setDateTimeSettings(newOverrides);
+                saveSettings(blockedDates, blockedWeekdays, dateWindowStart, dateWindowEnd, weekdayTimeSettings, newOverrides);
+                setDateBlockedFlag(dateKey, true); // opens the cancel-lessons modal
+                closeDateEditor();
+                return;
+            }
+            // No confirmation needed — write blocked state and the time override atomically so
+            // the UI refreshes and neither change clobbers the other.
+            const newBlocked = new Set(blockedDates);
+            if (dateEditBlocked) newBlocked.add(dateKey);
+            else newBlocked.delete(dateKey);
+            setBlockedDates(newBlocked);
+            setDateTimeSettings(newOverrides);
+            saveSettings(newBlocked, blockedWeekdays, dateWindowStart, dateWindowEnd, weekdayTimeSettings, newOverrides);
             closeDateEditor();
         };
 
         const resetDateEditor = () => {
             if (!editingDate) return;
+            const { dateKey } = editingDate;
             const newOverrides = { ...effDateOverrides };
-            delete newOverrides[editingDate.dateKey];
-            writeDateOverrides(newOverrides);
+            delete newOverrides[dateKey];
             setDateEditBlocked(false);
+
             if (selectedAdminPool) {
-                const cur = poolData?.blockedDates || [];
-                if (cur.includes(editingDate.dateKey)) updatePoolSetting('blockedDates', cur.filter(d => d !== editingDate.dateKey));
-            } else {
-                if (blockedDates.has(editingDate.dateKey)) toggleBlockedDate(editingDate.dateKey);
+                // Clear the time override AND unblock the date in a single atomic write so
+                // neither change overwrites the other from a stale poolSettings closure.
+                const cur = poolSettings && poolSettings[selectedAdminPool]
+                    ? poolSettings[selectedAdminPool]
+                    : { weekdayTimeSettings: {}, dateWindowStart: '', dateWindowEnd: '', blockedDates: [], blockedWeekdays: [] };
+                const newBlocked = (cur.blockedDates || []).filter(d => d !== dateKey);
+                const newPs = { ...(poolSettings || {}), [selectedAdminPool]: { ...cur, blockedDates: newBlocked, dateTimeSettings: newOverrides } };
+                setPoolSettings(newPs);
+                savePoolSettings(newPs);
+                closeDateEditor();
+                return;
             }
+
+            // Global case: clear the override and unblock the date in one atomic write.
+            // (Unblocking never needs the cancel-lessons confirmation.)
+            const newBlocked = new Set(blockedDates);
+            newBlocked.delete(dateKey);
+            setBlockedDates(newBlocked);
+            setDateTimeSettings(newOverrides);
+            saveSettings(newBlocked, blockedWeekdays, dateWindowStart, dateWindowEnd, weekdayTimeSettings, newOverrides);
             closeDateEditor();
         };
 

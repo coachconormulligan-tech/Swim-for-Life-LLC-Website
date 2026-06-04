@@ -1897,7 +1897,7 @@ END:VEVENT
                             );
                         })()}
 
-                        {adminTab === 'scheduling' && <AdminSchedulingPanel {...{blockedDates, blockedWeekdays, dateWindowStart, dateWindowEnd, handleStartDateChange, handleEndDateChange, setDateWindowStart, setDateWindowEnd, toggleBlockedDate, toggleBlockedWeekday, isDateBlocked, bookedLessons, cancelledLessons, firstAvailableDate: firstAvailable, saveSettings, weekdayTimeSettings, setWeekdayTimeSettings, dateTimeSettings, setDateTimeSettings, pools, setPools, poolSettings, setPoolSettings, savePools, savePoolSettings, poolSaveError, setPoolSaveError}} />}
+                        {adminTab === 'scheduling' && <AdminSchedulingPanel {...{blockedDates, setBlockedDates, blockedWeekdays, dateWindowStart, dateWindowEnd, handleStartDateChange, handleEndDateChange, setDateWindowStart, setDateWindowEnd, toggleBlockedDate, toggleBlockedWeekday, isDateBlocked, bookedLessons, cancelledLessons, firstAvailableDate: firstAvailable, saveSettings, weekdayTimeSettings, setWeekdayTimeSettings, dateTimeSettings, setDateTimeSettings, pools, setPools, poolSettings, setPoolSettings, savePools, savePoolSettings, poolSaveError, setPoolSaveError}} />}
                     </div>
                     {showCancelModal && cancelTarget && (
                         <div className="modal-overlay">

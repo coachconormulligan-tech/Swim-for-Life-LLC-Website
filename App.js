@@ -875,7 +875,9 @@ END:VEVENT
         const getWeekLessons = (weekStart) => {
             const weekEnd = new Date(weekStart);
             weekEnd.setDate(weekStart.getDate() + 7);
-            return getAllLessons().filter(l => !l.isCancelled && l.date >= weekStart && l.date < weekEnd);
+            // Use getAllLessonsForRevenue (not getAllLessons) so past/completed lessons
+            // also show up when navigating to earlier weeks.
+            return getAllLessonsForRevenue().filter(l => !l.isCancelled && l.date >= weekStart && l.date < weekEnd);
         };
 
         const navigateWeek = (direction) => {
@@ -1253,6 +1255,9 @@ END:VEVENT
                                             const dateKey = `${day.getFullYear()}-${day.getMonth()}-${day.getDate()}`;
                                             const dayLessons = getWeekLessons(adminWeekStart).filter(l => l.dateKey === dateKey);
                                             const isToday = day.toDateString() === new Date().toDateString();
+                                            const todayMidnight = new Date(); todayMidnight.setHours(0, 0, 0, 0);
+                                            const dayMidnight = new Date(day); dayMidnight.setHours(0, 0, 0, 0);
+                                            const isPast = dayMidnight < todayMidnight;
                                             return (
                                                 <div key={i} style={{padding: '0.5rem', borderRight: i < 6 ? '1px solid #e2e8f0' : 'none', background: isToday ? '#f0f9ff' : 'transparent', minHeight: '200px'}}>
                                                     {dayLessons.length === 0 ? (
@@ -1260,17 +1265,19 @@ END:VEVENT
                                                     ) : (
                                                         dayLessons.sort((a, b) => a.time.localeCompare(b.time)).map((lesson, j) => (
                                                             <div key={j} style={{
-                                                                background: lesson.lessonType === 'group' ? '#fef3c7' : '#dbeafe',
-                                                                border: `1px solid ${lesson.lessonType === 'group' ? '#f59e0b' : '#3b82f6'}`,
+                                                                background: isPast ? '#f1f5f9' : (lesson.lessonType === 'group' ? '#fef3c7' : '#dbeafe'),
+                                                                border: `1px solid ${isPast ? '#cbd5e1' : (lesson.lessonType === 'group' ? '#f59e0b' : '#3b82f6')}`,
                                                                 borderRadius: '6px',
                                                                 padding: '0.5rem',
                                                                 marginBottom: '0.5rem',
-                                                                fontSize: '0.75rem'
+                                                                fontSize: '0.75rem',
+                                                                opacity: isPast ? 0.6 : 1
                                                             }}>
-                                                                <div style={{fontWeight: 600, color: lesson.lessonType === 'group' ? '#92400e' : '#1e40af'}}>{lesson.time}</div>
-                                                                <div style={{color: '#475569', marginTop: '0.25rem'}}>{lesson.swimmer1Name}{lesson.swimmer2Name && `, ${lesson.swimmer2Name}`}</div>
+                                                                <div style={{fontWeight: 600, color: isPast ? '#64748b' : (lesson.lessonType === 'group' ? '#92400e' : '#1e40af')}}>{lesson.time}</div>
+                                                                <div style={{color: isPast ? '#64748b' : '#475569', marginTop: '0.25rem'}}>{lesson.swimmer1Name}{lesson.swimmer2Name && `, ${lesson.swimmer2Name}`}</div>
                                                                 <div style={{color: '#64748b', fontSize: '0.675rem', marginTop: '0.25rem'}}>{lesson.lessonType === 'group' ? 'Group' : 'Private'} • ${lesson.price}</div>
-                                                                {lesson.poolId && <div style={{color: '#3b82f6', fontSize: '0.65rem', marginTop: '0.25rem', fontWeight: 500}}>{getPoolName(lesson.poolId)}</div>}
+                                                                {lesson.poolId && <div style={{color: isPast ? '#94a3b8' : '#3b82f6', fontSize: '0.65rem', marginTop: '0.25rem', fontWeight: 500}}>{getPoolName(lesson.poolId)}</div>}
+                                                                {isPast && <div style={{color: '#64748b', fontSize: '0.65rem', marginTop: '0.25rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em'}}>✓ Completed</div>}
                                                             </div>
                                                         ))
                                                     )}

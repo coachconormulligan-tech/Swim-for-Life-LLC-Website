@@ -305,8 +305,8 @@
                     if (dayTimes && dayTimes.length === 0) return true;
                 }
                 if (ps.dateWindowStart || ps.dateWindowEnd) {
-                    if (ps.dateWindowStart && date < new Date(ps.dateWindowStart)) return true;
-                    if (ps.dateWindowEnd && date > new Date(ps.dateWindowEnd)) return true;
+                    if (ps.dateWindowStart && date < parseLocalDate(ps.dateWindowStart)) return true;
+                    if (ps.dateWindowEnd && date > parseLocalDate(ps.dateWindowEnd)) return true;
                 }
                 // Also respect globally blocked dates set by admin
                 if (blockedDates.has(dateKey)) return true;
@@ -322,8 +322,8 @@
                 if (dayTimes && dayTimes.length === 0) return true;
             }
             if (dateWindowStart || dateWindowEnd) {
-                if (dateWindowStart && date < new Date(dateWindowStart)) return true;
-                if (dateWindowEnd && date > new Date(dateWindowEnd)) return true;
+                if (dateWindowStart && date < parseLocalDate(dateWindowStart)) return true;
+                if (dateWindowEnd && date > parseLocalDate(dateWindowEnd)) return true;
             }
             return false;
         };
@@ -423,8 +423,8 @@
             // Get all dates within the window that fall on this weekday
             if (!dateWindowStart || !dateWindowEnd) return;
             
-            const start = new Date(dateWindowStart);
-            const end = new Date(dateWindowEnd);
+            const start = parseLocalDate(dateWindowStart);
+            const end = parseLocalDate(dateWindowEnd);
             const datesOnWeekday = [];
             
             for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {

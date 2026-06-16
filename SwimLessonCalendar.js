@@ -236,7 +236,7 @@
 
         const countWeeklyLessons = (startDate, time) => {
             let count = 0;
-            const endDate = effectiveDateWindowEnd ? new Date(effectiveDateWindowEnd) : null;
+            const endDate = effectiveDateWindowEnd ? parseLocalDate(effectiveDateWindowEnd) : null;
             for (let i = 0; i < 12; i++) {
                 const lessonDate = new Date(startDate.year, startDate.month, startDate.day);
                 lessonDate.setDate(lessonDate.getDate() + i * 7);
@@ -249,7 +249,7 @@
 
         const getLastLessonDate = (startDate, time) => {
             let lastDate = new Date(startDate.year, startDate.month, startDate.day);
-            const endDate = effectiveDateWindowEnd ? new Date(effectiveDateWindowEnd) : null;
+            const endDate = effectiveDateWindowEnd ? parseLocalDate(effectiveDateWindowEnd) : null;
             for (let i = 0; i < 12; i++) {
                 const lessonDate = new Date(startDate.year, startDate.month, startDate.day);
                 lessonDate.setDate(lessonDate.getDate() + i * 7);
@@ -318,7 +318,7 @@
 
         const checkWeeklyConflicts = (year, month, day, time) => {
             const conflicts = [], startDate = new Date(year, month, day);
-            const endDate = effectiveDateWindowEnd ? new Date(effectiveDateWindowEnd) : null;
+            const endDate = effectiveDateWindowEnd ? parseLocalDate(effectiveDateWindowEnd) : null;
             for (let i = 0; i < 12; i++) {
                 const lessonDate = new Date(startDate); lessonDate.setDate(lessonDate.getDate() + i * 7);
                 if (endDate && lessonDate > endDate) break;
@@ -337,7 +337,7 @@
         const bookWeeklyLesson = (year, month, day, time, lessonInfo) => {
             const conflicts = checkWeeklyConflicts(year, month, day, time);
             const conflictKeys = new Set(conflicts.map(c => c.dateKey));
-            const endDate = effectiveDateWindowEnd ? new Date(effectiveDateWindowEnd) : null;
+            const endDate = effectiveDateWindowEnd ? parseLocalDate(effectiveDateWindowEnd) : null;
             setReschedulingLessonInfo(lessonInfo);
             
             // Batch all lessons into a single update
@@ -500,7 +500,7 @@ END:VEVENT
                 const bookedDates = [];
                 const conflicts = checkWeeklyConflicts(selectedDate.year, selectedDate.month, selectedDate.day, selectedTime);
                 const conflictKeys = new Set(conflicts.map(c => c.dateKey));
-                const endDate = effectiveDateWindowEnd ? new Date(effectiveDateWindowEnd) : null;
+                const endDate = effectiveDateWindowEnd ? parseLocalDate(effectiveDateWindowEnd) : null;
                 
                 for (let i = 0; i < 12; i++) {
                     const lessonDate = new Date(selectedDate.year, selectedDate.month, selectedDate.day);
@@ -646,7 +646,7 @@ END:VEVENT
         // Find the last available (non-blocked) date within the booking window for the selected pool
         const lastAvailableDateKey = (() => {
             if (!effectiveDateWindowEnd) return null;
-            const end = new Date(effectiveDateWindowEnd);
+            const end = parseLocalDate(effectiveDateWindowEnd);
             const d = new Date(end.getFullYear(), end.getMonth(), end.getDate());
             for (let i = 0; i < 400; i++) {
                 if (!isDateBlocked(d.getFullYear(), d.getMonth(), d.getDate(), selectedPool)) {

@@ -497,6 +497,22 @@
             setCancelTarget(null);
         };
 
+        // Booking (or moving) a lesson into a slot must drop any stale cancellation for that
+        // exact date+time. Cancellations are keyed by `${dateKey}-${time}` and persist in
+        // Firebase even after the original lesson is gone, so without this a freshly booked
+        // lesson that reuses a previously-cancelled slot inherits the old "cancelled" status
+        // and appears cancelled immediately (notably the last-day slots, e.g. July 18).
+        const clearCancelledSlots = (slotKeys) => {
+            const keys = Array.isArray(slotKeys) ? slotKeys : [slotKeys];
+            const newCancelled = new Set(cancelledLessons);
+            let changed = false;
+            keys.forEach(k => { if (newCancelled.delete(k)) changed = true; });
+            if (changed) {
+                setCancelledLessons(newCancelled);
+                saveCancelled(newCancelled);
+            }
+        };
+
         const cancelSingleLesson = (dateKey, lesson) => {
             setCancelTarget({ type: 'single', dateKey, lesson });
             setShowCancelModal(true);
@@ -557,11 +573,15 @@
                         delete newBookedLessons[oldDateKey];
                     }
                 }
-                // Add to new location
+                // Add to new location, dropping any cancelled "ghost" already occupying the
+                // destination slot so the moved lesson doesn't inherit a stale cancellation.
                 if (!newBookedLessons[newDateKey]) {
                     newBookedLessons[newDateKey] = [];
                 }
-                newBookedLessons[newDateKey].push(updatedLesson);
+                newBookedLessons[newDateKey] = [
+                    ...newBookedLessons[newDateKey].filter(l => !(l.time === newTime && cancelledLessons.has(`${newDateKey}-${l.time}`))),
+                    updatedLesson
+                ];
             } else {
                 // Just update in place
                 newBookedLessons[oldDateKey] = newBookedLessons[oldDateKey].map(l => 
@@ -570,6 +590,8 @@
             }
             
             setBookedLessons(newBookedLessons);
+            // Re-activate the destination slot in case it carried a stale cancellation.
+            clearCancelledSlots(`${newDateKey}-${newTime}`);
             setSavingIndicator(true);
             await saveLessons(newBookedLessons);
             await syncStudentFromLesson(updatedLesson);
@@ -670,8 +692,12 @@
                 poolId: newLessonData.poolId || '',
                 manuallyAdded: true
             };
-            const newBookedLessons = { ...bookedLessons, [dateKey]: [...(bookedLessons[dateKey] || []), lesson] };
+            // Drop any cancelled ghost in this slot and clear its stale cancelled key, so a
+            // manually added lesson on a previously-cancelled slot shows as active.
+            const kept = (bookedLessons[dateKey] || []).filter(l => !(l.time === newLessonData.time && cancelledLessons.has(`${dateKey}-${l.time}`)));
+            const newBookedLessons = { ...bookedLessons, [dateKey]: [...kept, lesson] };
             setBookedLessons(newBookedLessons);
+            clearCancelledSlots(`${dateKey}-${newLessonData.time}`);
             setSavingIndicator(true);
             await saveLessons(newBookedLessons);
             await syncStudentFromLesson(lesson);
@@ -1210,7 +1236,9 @@ END:VEVENT
                                                         <button className="btn btn-small" style={{background: '#3b82f6', color: 'white'}} onClick={() => startEditingLesson(lesson)}>Edit</button>
                                                         <button className="btn btn-danger btn-small" onClick={() => cancelSingleLesson(lesson.dateKey, lesson)}>Cancel</button>
                                                     </div>
-                                                ) : <span style={{color: '#94a3b8', fontSize: '0.75rem'}}>—</span>}</td>
+                                                ) : (
+                                                    <button className="btn btn-small" style={{background: '#059669', color: 'white'}} onClick={() => clearCancelledSlots(`${lesson.dateKey}-${lesson.time}`)}>Restore</button>
+                                                )}</td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -2220,7 +2248,7 @@ END:VEVENT
                 <section className={`about-section ${showAbout ? 'visible' : ''}`} id="about"><div className="about-content"><h2>About Coach Conor</h2><div className="about-photo-wrapper"><img src="Conor-Mulligan_2-1638x2048.png" alt="Coach Conor Mulligan" className="about-photo" /></div><p>Coach Conor is a Raleigh native with a deep love of swimming and a life of experience in the sport. He currently serves as the head coach of the Wood Valley Otters, returning this year for his fifth year. He has over ten years of coaching experience working with swimmers of all ages on technique and stroke work.</p><p>When Coach Conor is not coaching in the summer, he works as a humanities teacher for middle and high schoolers at St. Thomas More Academy. He is the head coach of the school's swim team, which he started in 2015 while he was a student.</p><p>Coach Conor graduated from Hillsdale College and now lives in Knightdale with his lovely wife and daughter. During his free time, he enjoys reading, writing, and playing board games.</p><p className="about-certified">Coach Conor is lifeguard certified.</p></div></section>
                 <section className={`locations-section ${showLocations ? 'visible' : ''}`} id="locations"><div className="locations-content"><h2>Available Locations</h2>{pools.length === 0 ? <p className="locations-empty">No locations are currently listed. Check back soon!</p> : pools.map(pool => (<div key={pool.id} className="location-card"><div className="location-name">{pool.name}</div>{pool.address && <div className="location-address">{pool.address}</div>}<div className="location-card-actions"><button className="location-book-btn" onClick={() => handleLocationBookingClick(pool.id)}>Book a lesson here</button>{pool.address && <a className="location-directions-btn" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(pool.address)}`} target="_blank" rel="noopener noreferrer">Get directions</a>}</div></div>))}</div></section>
                 <section className="pricing"><h2>Pricing</h2><div className="price-grid"><div className="price-card" onClick={() => handleBookingClick('private')}><div className="swimmers">1 Swimmer</div><div className="amount">$40</div><div className="duration">30 minutes</div><div className="click-hint">Click to book</div></div><div className="price-card" onClick={() => handleBookingClick('group')}><div className="swimmers">2 Swimmers</div><div className="amount">$70</div><div className="duration">30 minutes</div><div className="click-hint">Click to book</div></div></div></section>
-                <section className={`calendar-section ${showCalendar ? 'visible' : ''}`} id="calendar"><h2>Book Your Lesson</h2><SwimLessonCalendar {...{preselectedType, preselectedPool, autoBookWeekly, bookedLessons, setBookedLessons, saveLessons, cancelledLessons, isDateBlocked, getFirstAvailableDate, getClosestAvailableTo, dateWindowEnd, lessonTypeUpdate, weekdayTimeSettings, dateTimeSettings, pools, poolSettings, syncStudentFromLesson}} /></section>
+                <section className={`calendar-section ${showCalendar ? 'visible' : ''}`} id="calendar"><h2>Book Your Lesson</h2><SwimLessonCalendar {...{preselectedType, preselectedPool, autoBookWeekly, bookedLessons, setBookedLessons, saveLessons, cancelledLessons, clearCancelledSlots, isDateBlocked, getFirstAvailableDate, getClosestAvailableTo, dateWindowEnd, lessonTypeUpdate, weekdayTimeSettings, dateTimeSettings, pools, poolSettings, syncStudentFromLesson}} /></section>
                 <section className={`contact-section ${showContact ? 'visible' : ''}`} id="contact"><div className="contact-content"><h2>Contact</h2><p className="contact-intro">Questions about lessons? Reach out anytime — I'm happy to help.</p><div className="contact-grid"><a className="contact-card" href="tel:+19196951534"><div className="contact-label">Phone</div><div className="contact-value">919-695-1534</div></a><a className="contact-card" href="mailto:coach.conor.mulligan@gmail.com"><div className="contact-label">Email</div><div className="contact-value">coach.conor.mulligan@gmail.com</div></a></div></div></section><footer><p>&copy; 2026 Swim for Life, LLC</p></footer>
             </>
         );

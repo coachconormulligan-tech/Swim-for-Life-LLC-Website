@@ -1,4 +1,4 @@
-    const SwimLessonCalendar = ({ preselectedType, preselectedPool, autoBookWeekly, bookedLessons, setBookedLessons, saveLessons, cancelledLessons, isDateBlocked, getFirstAvailableDate, getClosestAvailableTo, dateWindowEnd, lessonTypeUpdate, weekdayTimeSettings, dateTimeSettings, pools, poolSettings, syncStudentFromLesson }) => {
+    const SwimLessonCalendar = ({ preselectedType, preselectedPool, autoBookWeekly, bookedLessons, setBookedLessons, saveLessons, cancelledLessons, clearCancelledSlots, isDateBlocked, getFirstAvailableDate, getClosestAvailableTo, dateWindowEnd, lessonTypeUpdate, weekdayTimeSettings, dateTimeSettings, pools, poolSettings, syncStudentFromLesson }) => {
         const [selectedPool, setSelectedPool] = useState('');
         const [currentDate, setCurrentDate] = useState(() => { const f = getFirstAvailableDate(); return new Date(f.getFullYear(), f.getMonth(), 1); });
         const [selectedDate, setSelectedDate] = useState(null);
@@ -310,9 +310,15 @@
             const current = getActiveLessons(dateKey);
             const maxForDay = getLessonTimesForDate(year, month, day).length;
             if (current.length < maxForDay && !current.some(l => l.time === time)) {
-                const newLessons = { ...bookedLessons, [dateKey]: [...(bookedLessons[dateKey] || []), lessonInfo || { time }] };
+                const slotKey = `${dateKey}-${time}`;
+                // Drop any cancelled "ghost" still occupying this exact slot so the new booking
+                // doesn't sit alongside a stale duplicate, then clear the slot's cancelled key
+                // so the fresh lesson shows as active instead of inheriting the old cancellation.
+                const kept = (bookedLessons[dateKey] || []).filter(l => !(l.time === time && cancelledLessons.has(`${dateKey}-${l.time}`)));
+                const newLessons = { ...bookedLessons, [dateKey]: [...kept, lessonInfo || { time }] };
                 setBookedLessons(newLessons);
                 saveLessons(newLessons);
+                if (clearCancelledSlots && cancelledLessons.has(slotKey)) clearCancelledSlots(slotKey);
             }
         };
 
@@ -342,8 +348,9 @@
             
             // Batch all lessons into a single update
             let newLessons = { ...bookedLessons };
+            const clearedSlots = [];
             for (let i = 0; i < 12; i++) {
-                const lessonDate = new Date(year, month, day); 
+                const lessonDate = new Date(year, month, day);
                 lessonDate.setDate(lessonDate.getDate() + i * 7);
                 if (endDate && lessonDate > endDate) break;
                 const dateKey = formatDateKey(lessonDate);
@@ -351,12 +358,18 @@
                     const current = (newLessons[dateKey] || []).filter(l => !cancelledLessons.has(`${dateKey}-${l.time}`));
                     const maxForDay = getLessonTimesForDate(lessonDate.getFullYear(), lessonDate.getMonth(), lessonDate.getDate()).length;
                     if (current.length < maxForDay && !current.some(l => l.time === time)) {
-                        newLessons = { ...newLessons, [dateKey]: [...(newLessons[dateKey] || []), lessonInfo] };
+                        const slotKey = `${dateKey}-${time}`;
+                        // Drop any cancelled ghost in this slot and remember the slot so its stale
+                        // cancelled key gets cleared (otherwise the new lesson shows cancelled).
+                        const kept = (newLessons[dateKey] || []).filter(l => !(l.time === time && cancelledLessons.has(`${dateKey}-${l.time}`)));
+                        newLessons = { ...newLessons, [dateKey]: [...kept, lessonInfo] };
+                        if (cancelledLessons.has(slotKey)) clearedSlots.push(slotKey);
                     }
                 }
             }
             setBookedLessons(newLessons);
             saveLessons(newLessons);
+            if (clearCancelledSlots && clearedSlots.length) clearCancelledSlots(clearedSlots);
             
             if (conflicts.length > 0) { setConflictDates(conflicts); setCurrentConflictIndex(0); setShowConflictModal(true); }
             else { setSelectedDate(null); setSelectedTime(''); setReschedulingLessonInfo(null); resetForm(); }

@@ -91,51 +91,74 @@
             return year === today.getFullYear() && month === today.getMonth() && day === today.getDate();
         };
 
-        // Load data from Firebase on mount
+        // Load data from Firebase on mount using REAL-TIME listeners (onSnapshot).
+        // This keeps the admin dashboard and public calendar in sync automatically:
+        // any time a lesson is added, edited, or cancelled — by this admin, by a
+        // customer booking, or from another device/tab — the change streams in and the
+        // UI re-renders without a manual page refresh. (Replaces one-time .get() reads.)
         useEffect(() => {
-            const loadData = async () => {
-                if (!firebaseReady || !db) {
-                    console.log('Firebase not ready, using local state only');
-                    setIsLoading(false);
-                    return;
-                }
-                try {
-                    const lessonsDoc = await db.collection('swimLessons').doc('lessons').get();
-                    if (lessonsDoc.exists) setBookedLessons(lessonsDoc.data().data || {});
-                    
-                    const cancelledDoc = await db.collection('swimLessons').doc('cancelled').get();
-                    if (cancelledDoc.exists) setCancelledLessons(new Set(cancelledDoc.data().data || []));
-                    
-                    const settingsDoc = await db.collection('swimLessons').doc('settings').get();
-                    if (settingsDoc.exists) {
-                        const s = settingsDoc.data();
-                        setBlockedDates(new Set(s.blockedDates || []));
-                        // Ensure weekday indices are numbers, not strings
-                        setBlockedWeekdays(new Set((s.blockedWeekdays || []).map(Number)));
-                        setDateWindowStart(s.dateWindowStart || '');
-                        setDateWindowEnd(s.dateWindowEnd || '');
-                        setWeekdayTimeSettings(s.weekdayTimeSettings || {});
-                        setDateTimeSettings(s.dateTimeSettings || {});
-                    }
-                    
-                    const notesDoc = await db.collection('swimLessons').doc('studentNotes').get();
-                    if (notesDoc.exists) setStudentNotes(notesDoc.data().data || {});
-
-                    const studentsDoc = await db.collection('swimLessons').doc('students').get();
-                    if (studentsDoc.exists) setManualStudents(studentsDoc.data().data || []);
-
-                    const poolsDoc = await db.collection('swimLessons').doc('pools').get();
-                    if (poolsDoc.exists) setPools(poolsDoc.data().data || []);
-
-                    const poolSettingsDoc = await db.collection('swimLessons').doc('poolSettings').get();
-                    if (poolSettingsDoc.exists) setPoolSettings(poolSettingsDoc.data().data || {});
-
-                } catch (error) {
-                    console.error('Error loading data:', error);
-                }
+            if (!firebaseReady || !db) {
+                console.log('Firebase not ready, using local state only');
                 setIsLoading(false);
+                return;
+            }
+            const col = db.collection('swimLessons');
+            const onErr = (label) => (error) => console.error('Error loading ' + label + ':', error);
+
+            const unsubLessons = col.doc('lessons').onSnapshot(doc => {
+                if (doc.exists) setBookedLessons(doc.data().data || {});
+                // First lessons snapshot means initial data has arrived — hide the spinner.
+                setIsLoading(false);
+            }, onErr('lessons'));
+
+            const unsubCancelled = col.doc('cancelled').onSnapshot(doc => {
+                if (doc.exists) setCancelledLessons(new Set(doc.data().data || []));
+            }, onErr('cancelled'));
+
+            const unsubSettings = col.doc('settings').onSnapshot(doc => {
+                if (doc.exists) {
+                    const s = doc.data();
+                    setBlockedDates(new Set(s.blockedDates || []));
+                    // Ensure weekday indices are numbers, not strings
+                    setBlockedWeekdays(new Set((s.blockedWeekdays || []).map(Number)));
+                    setDateWindowStart(s.dateWindowStart || '');
+                    setDateWindowEnd(s.dateWindowEnd || '');
+                    setWeekdayTimeSettings(s.weekdayTimeSettings || {});
+                    setDateTimeSettings(s.dateTimeSettings || {});
+                }
+            }, onErr('settings'));
+
+            const unsubNotes = col.doc('studentNotes').onSnapshot(doc => {
+                if (doc.exists) setStudentNotes(doc.data().data || {});
+            }, onErr('studentNotes'));
+
+            const unsubStudents = col.doc('students').onSnapshot(doc => {
+                if (doc.exists) setManualStudents(doc.data().data || []);
+            }, onErr('students'));
+
+            const unsubPools = col.doc('pools').onSnapshot(doc => {
+                if (doc.exists) setPools(doc.data().data || []);
+            }, onErr('pools'));
+
+            const unsubPoolSettings = col.doc('poolSettings').onSnapshot(doc => {
+                if (doc.exists) setPoolSettings(doc.data().data || {});
+            }, onErr('poolSettings'));
+
+            // Safety net: if the lessons doc doesn't exist yet, the snapshot above still
+            // fires and clears the spinner, but guard against a stuck spinner just in case.
+            const spinnerTimeout = setTimeout(() => setIsLoading(false), 5000);
+
+            // Detach all listeners on unmount to avoid leaks / duplicate updates.
+            return () => {
+                clearTimeout(spinnerTimeout);
+                unsubLessons();
+                unsubCancelled();
+                unsubSettings();
+                unsubNotes();
+                unsubStudents();
+                unsubPools();
+                unsubPoolSettings();
             };
-            loadData();
         }, []);
 
         // Save functions

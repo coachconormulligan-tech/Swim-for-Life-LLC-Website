@@ -10,6 +10,7 @@
         const [autoBookWeekly, setAutoBookWeekly] = useState(false);
         const [bookedLessons, setBookedLessons] = useState({});
         const [cancelledLessons, setCancelledLessons] = useState(new Set());
+        const [paidLessons, setPaidLessons] = useState(new Set());
         const [adminTab, setAdminTab] = useState('lessons');
         const [adminWeekStart, setAdminWeekStart] = useState(() => {
             const today = new Date();
@@ -115,6 +116,10 @@
                 if (doc.exists) setCancelledLessons(new Set(doc.data().data || []));
             }, onErr('cancelled'));
 
+            const unsubPaid = col.doc('paid').onSnapshot(doc => {
+                if (doc.exists) setPaidLessons(new Set(doc.data().data || []));
+            }, onErr('paid'));
+
             const unsubSettings = col.doc('settings').onSnapshot(doc => {
                 if (doc.exists) {
                     const s = doc.data();
@@ -153,6 +158,7 @@
                 clearTimeout(spinnerTimeout);
                 unsubLessons();
                 unsubCancelled();
+                unsubPaid();
                 unsubSettings();
                 unsubNotes();
                 unsubStudents();
@@ -169,8 +175,23 @@
         };
         const saveCancelled = async (cancelled) => {
             if (!db) return;
-            try { await db.collection('swimLessons').doc('cancelled').set({ data: Array.from(cancelled) }); } 
+            try { await db.collection('swimLessons').doc('cancelled').set({ data: Array.from(cancelled) }); }
             catch (e) { console.error('Error saving cancelled:', e); }
+        };
+        const savePaid = async (paid) => {
+            if (!db) return;
+            try { await db.collection('swimLessons').doc('paid').set({ data: Array.from(paid) }); }
+            catch (e) { console.error('Error saving paid:', e); alert('Could not save payment status. Check Firestore rules — the "paid" document may not be permitted.'); }
+        };
+        // Toggle whether a single lesson has been paid for. Keyed the same way as
+        // cancelled lessons: `${dateKey}-${time}`.
+        const togglePaid = (dateKey, lesson) => {
+            const key = `${dateKey}-${lesson.time}`;
+            const newPaid = new Set(paidLessons);
+            if (newPaid.has(key)) newPaid.delete(key);
+            else newPaid.add(key);
+            setPaidLessons(newPaid);
+            savePaid(newPaid);
         };
         const saveSettings = async (blocked, weekdays, start, end, weekdayTimes = null, dateTimes = null) => {
             if (!db) return;
@@ -747,11 +768,20 @@
                 const lessonDate = new Date(y, m, d);
                 if (lessonDate >= today) {
                     lessons.forEach(lesson => {
-                        allLessons.push({ date: lessonDate, dateKey, isCancelled: cancelledLessons.has(`${dateKey}-${lesson.time}`), ...lesson });
+                        allLessons.push({ date: lessonDate, dateKey, isCancelled: cancelledLessons.has(`${dateKey}-${lesson.time}`), isPaid: paidLessons.has(`${dateKey}-${lesson.time}`), ...lesson });
                     });
                 }
             });
             return allLessons.sort((a, b) => a.date - b.date || a.time.localeCompare(b.time));
+        };
+
+        // Lessons whose date is before today, most-recent first. Used by the Past
+        // Lessons tab so you can see completed lessons and track who still owes money.
+        const getPastLessons = () => {
+            const today = new Date(); today.setHours(0, 0, 0, 0);
+            return getAllLessonsForRevenue()
+                .filter(l => l.date < today)
+                .sort((a, b) => b.date - a.date || a.time.localeCompare(b.time));
         };
 
         const getTotalRevenue = () => getAllLessons().filter(l => !l.isCancelled).reduce((sum, l) => sum + (l.price || 0), 0);
@@ -942,7 +972,7 @@ END:VEVENT
                 const [y, m, d] = dateKey.split('-').map(Number);
                 const lessonDate = new Date(y, m, d);
                 lessons.forEach(lesson => {
-                    allLessons.push({ date: lessonDate, dateKey, isCancelled: cancelledLessons.has(`${dateKey}-${lesson.time}`), ...lesson });
+                    allLessons.push({ date: lessonDate, dateKey, isCancelled: cancelledLessons.has(`${dateKey}-${lesson.time}`), isPaid: paidLessons.has(`${dateKey}-${lesson.time}`), ...lesson });
                 });
             });
             return allLessons.sort((a, b) => a.date - b.date);
@@ -1194,6 +1224,9 @@ END:VEVENT
         if (showAdmin) {
             const allLessons = getAllLessons();
             const displayedLessons = hideCancelled ? allLessons.filter(l => !l.isCancelled) : allLessons;
+            const pastLessons = getPastLessons();
+            const displayedPast = hideCancelled ? pastLessons.filter(l => !l.isCancelled) : pastLessons;
+            const pastOwed = pastLessons.filter(l => !l.isCancelled && !l.isPaid).reduce((sum, l) => sum + (l.price || 0), 0);
             const firstAvailable = getFirstAvailableDate();
             return (
                 <div style={{minHeight: '100vh', background: 'linear-gradient(180deg, #f8fafc 0%, #e0f2fe 100%)', padding: '2rem 1rem'}}>
@@ -1207,6 +1240,7 @@ END:VEVENT
                         </div>
                         <div className="admin-tabs">
                             <button className={`admin-tab ${adminTab === 'lessons' ? 'active' : ''}`} onClick={() => setAdminTab('lessons')}>Upcoming Lessons</button>
+                            <button className={`admin-tab ${adminTab === 'past' ? 'active' : ''}`} onClick={() => setAdminTab('past')}>Past Lessons</button>
                             <button className={`admin-tab ${adminTab === 'weekly' ? 'active' : ''}`} onClick={() => setAdminTab('weekly')}>Weekly View</button>
                             <button className={`admin-tab ${adminTab === 'revenue' ? 'active' : ''}`} onClick={() => setAdminTab('revenue')}>Revenue</button>
                             <button className={`admin-tab ${adminTab === 'students' ? 'active' : ''}`} onClick={() => setAdminTab('students')}>Students</button>
@@ -1239,9 +1273,9 @@ END:VEVENT
                                     </div>
                                 </div>
                                 <table className="lessons-table">
-                                    <thead><tr><th>Date</th><th>Time</th><th>Pool</th><th>Type</th><th>Parent</th><th>Swimmer(s)</th><th>Contact</th><th>Price</th><th>Action</th></tr></thead>
+                                    <thead><tr><th>Date</th><th>Time</th><th>Pool</th><th>Type</th><th>Parent</th><th>Swimmer(s)</th><th>Contact</th><th>Price</th><th>Paid</th><th>Action</th></tr></thead>
                                     <tbody>
-                                        {displayedLessons.length === 0 ? <tr><td colSpan="9" className="no-lessons">No upcoming lessons booked yet.</td></tr> : displayedLessons.map((lesson, i) => (
+                                        {displayedLessons.length === 0 ? <tr><td colSpan="10" className="no-lessons">No upcoming lessons booked yet.</td></tr> : displayedLessons.map((lesson, i) => (
                                             <tr key={i} className={lesson.isCancelled ? 'cancelled' : ''}>
                                                 <td>{lesson.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</td>
                                                 <td>{lesson.time}</td>
@@ -1254,6 +1288,13 @@ END:VEVENT
                                                 <td>{lesson.swimmer1Name ? <>{lesson.swimmer1Name}{lesson.swimmer1Birthday ? ` (${calculateAge(lesson.swimmer1Birthday)})` : ''}{lesson.swimmer2Name && <><br/>{lesson.swimmer2Name}{lesson.swimmer2Birthday ? ` (${calculateAge(lesson.swimmer2Birthday)})` : ''}</>}</> : '-'}</td>
                                                 <td>{lesson.email || lesson.phone ? <>{lesson.email && <div>{lesson.email}</div>}{lesson.phone && <div>{lesson.phone}</div>}</> : '-'}</td>
                                                 <td>${lesson.price || 0}</td>
+                                                <td>{lesson.isCancelled ? <span style={{color: '#94a3b8'}}>—</span> : (
+                                                    lesson.isPaid ? (
+                                                        <button className="btn btn-small" style={{background: '#059669', color: 'white'}} title="Paid — click to mark unpaid" onClick={() => togglePaid(lesson.dateKey, lesson)}>✓ Paid</button>
+                                                    ) : (
+                                                        <button className="btn btn-small" style={{background: '#fff', color: '#b45309', border: '1px solid #f59e0b'}} title="Not paid — click to mark paid" onClick={() => togglePaid(lesson.dateKey, lesson)}>Mark Paid</button>
+                                                    )
+                                                )}</td>
                                                 <td>{!lesson.isCancelled ? (
                                                     <div style={{display: 'flex', gap: '0.25rem'}}>
                                                         <button className="btn btn-small" style={{background: '#3b82f6', color: 'white'}} onClick={() => startEditingLesson(lesson)}>Edit</button>
@@ -1268,7 +1309,57 @@ END:VEVENT
                                 </table>
                             </>
                         )}
-                        
+
+                        {adminTab === 'past' && (
+                            <>
+                                <div className="admin-stats">
+                                    <div className="stat-card"><h4>Past Lessons</h4><div className="stat-value">{pastLessons.filter(l => !l.isCancelled).length}</div></div>
+                                    <div className="stat-card" style={{background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)', border: '1px solid #a7f3d0'}}><h4 style={{color: '#047857'}}>Collected</h4><div className="stat-value" style={{color: '#059669'}}>${pastLessons.filter(l => !l.isCancelled && l.isPaid).reduce((sum, l) => sum + (l.price || 0), 0)}</div></div>
+                                    <div className="stat-card" style={{background: 'linear-gradient(135deg, #fff7ed 0%, #fed7aa 100%)', border: '1px solid #fdba74'}}><h4 style={{color: '#b45309'}}>Still Owed</h4><div className="stat-value" style={{color: '#ea580c'}}>${pastOwed}</div></div>
+                                </div>
+                                <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem'}}>
+                                    <div style={{display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', background: 'white', borderRadius: '10px'}}>
+                                        <label style={{display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.875rem', color: '#475569'}}>
+                                            <input type="checkbox" checked={hideCancelled} onChange={(e) => setHideCancelled(e.target.checked)} style={{width: '18px', height: '18px', cursor: 'pointer'}} />
+                                            Hide cancelled lessons
+                                        </label>
+                                    </div>
+                                </div>
+                                <table className="lessons-table">
+                                    <thead><tr><th>Date</th><th>Time</th><th>Pool</th><th>Type</th><th>Parent</th><th>Swimmer(s)</th><th>Contact</th><th>Price</th><th>Paid</th><th>Action</th></tr></thead>
+                                    <tbody>
+                                        {displayedPast.length === 0 ? <tr><td colSpan="10" className="no-lessons">No past lessons yet.</td></tr> : displayedPast.map((lesson, i) => (
+                                            <tr key={i} className={lesson.isCancelled ? 'cancelled' : ''}>
+                                                <td>{lesson.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</td>
+                                                <td>{lesson.time}</td>
+                                                <td style={{fontSize: '0.8rem'}}>
+                                                    <div style={{fontWeight: 500}}>{getPoolName(lesson.poolId)}</div>
+                                                    {lesson.poolId && getPoolAddress(lesson.poolId) && <div style={{color: '#64748b', fontSize: '0.75rem'}}>{getPoolAddress(lesson.poolId)}</div>}
+                                                </td>
+                                                <td>{lesson.isCancelled ? <span className="lesson-type-badge cancelled">Cancelled</span> : <span className={`lesson-type-badge ${lesson.lessonType || 'private'}`}>{lesson.lessonType === 'group' ? 'Group' : 'Private'}</span>}</td>
+                                                <td>{lesson.parentName || '-'}</td>
+                                                <td>{lesson.swimmer1Name ? <>{lesson.swimmer1Name}{lesson.swimmer1Birthday ? ` (${calculateAge(lesson.swimmer1Birthday)})` : ''}{lesson.swimmer2Name && <><br/>{lesson.swimmer2Name}{lesson.swimmer2Birthday ? ` (${calculateAge(lesson.swimmer2Birthday)})` : ''}</>}</> : '-'}</td>
+                                                <td>{lesson.email || lesson.phone ? <>{lesson.email && <div>{lesson.email}</div>}{lesson.phone && <div>{lesson.phone}</div>}</> : '-'}</td>
+                                                <td>${lesson.price || 0}</td>
+                                                <td>{lesson.isCancelled ? <span style={{color: '#94a3b8'}}>—</span> : (
+                                                    lesson.isPaid ? (
+                                                        <button className="btn btn-small" style={{background: '#059669', color: 'white'}} title="Paid — click to mark unpaid" onClick={() => togglePaid(lesson.dateKey, lesson)}>✓ Paid</button>
+                                                    ) : (
+                                                        <button className="btn btn-small" style={{background: '#fff', color: '#b45309', border: '1px solid #f59e0b'}} title="Not paid — click to mark paid" onClick={() => togglePaid(lesson.dateKey, lesson)}>Mark Paid</button>
+                                                    )
+                                                )}</td>
+                                                <td>{lesson.isCancelled ? (
+                                                    <button className="btn btn-small" style={{background: '#059669', color: 'white'}} onClick={() => clearCancelledSlots(`${lesson.dateKey}-${lesson.time}`)}>Restore</button>
+                                                ) : (
+                                                    <button className="btn btn-small" style={{background: '#3b82f6', color: 'white'}} onClick={() => startEditingLesson(lesson)}>Edit</button>
+                                                )}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </>
+                        )}
+
                         {adminTab === 'weekly' && (
                             <>
                                 <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem'}}>
@@ -1328,6 +1419,14 @@ END:VEVENT
                                                                 <div style={{color: isPast ? '#64748b' : '#475569', marginTop: '0.25rem'}}>{lesson.swimmer1Name}{lesson.swimmer2Name && `, ${lesson.swimmer2Name}`}</div>
                                                                 <div style={{color: '#64748b', fontSize: '0.675rem', marginTop: '0.25rem'}}>{lesson.lessonType === 'group' ? 'Group' : 'Private'} • ${lesson.price}</div>
                                                                 {lesson.poolId && <div style={{color: isPast ? '#94a3b8' : '#3b82f6', fontSize: '0.65rem', marginTop: '0.25rem', fontWeight: 500}}>{getPoolName(lesson.poolId)}</div>}
+                                                                <div style={{marginTop: '0.25rem'}}>
+                                                                    <button onClick={() => togglePaid(lesson.dateKey, lesson)} title={lesson.isPaid ? 'Paid — click to mark unpaid' : 'Not paid — click to mark paid'} style={{
+                                                                        cursor: 'pointer', fontSize: '0.65rem', fontWeight: 700, borderRadius: '4px', padding: '0.1rem 0.35rem', fontFamily: 'inherit',
+                                                                        background: lesson.isPaid ? '#059669' : '#fff',
+                                                                        color: lesson.isPaid ? '#fff' : '#b45309',
+                                                                        border: `1px solid ${lesson.isPaid ? '#059669' : '#f59e0b'}`
+                                                                    }}>{lesson.isPaid ? '✓ Paid' : 'Unpaid'}</button>
+                                                                </div>
                                                                 {isPast && <div style={{color: '#64748b', fontSize: '0.65rem', marginTop: '0.25rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em'}}>✓ Completed</div>}
                                                             </div>
                                                         ))

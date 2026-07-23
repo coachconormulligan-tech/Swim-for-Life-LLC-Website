@@ -308,8 +308,13 @@
         const bookLesson = (year, month, day, time, lessonInfo) => {
             const dateKey = `${year}-${month}-${day}`;
             const current = getActiveLessons(dateKey);
-            const maxForDay = getLessonTimesForDate(year, month, day).length;
-            if (current.length < maxForDay && !current.some(l => l.time === time)) {
+            const dayTimes = getLessonTimesForDate(year, month, day);
+            const maxForDay = dayTimes.length;
+            // Only count lessons in the day's regular configured slots against capacity.
+            // A manually-added lesson at an irregular time (outside dayTimes) shouldn't
+            // consume a regular slot's capacity and block booking the last regular time.
+            const regularBooked = current.filter(l => dayTimes.includes(l.time)).length;
+            if (regularBooked < maxForDay && !current.some(l => l.time === time)) {
                 const slotKey = `${dateKey}-${time}`;
                 // Drop any cancelled "ghost" still occupying this exact slot so the new booking
                 // doesn't sit alongside a stale duplicate, then clear the slot's cancelled key
@@ -335,7 +340,9 @@
                 // exactly like a slot that's already booked. This prevents booking a time (e.g. 4:00 PM
                 // from a custom day) onto later weeks that don't offer that time.
                 const timeOffered = dayTimes.includes(time);
-                if (blocked || !timeOffered || booked.some(l => l.time === time) || booked.length >= maxForDay) conflicts.push({ date: lessonDate, dateString: lessonDate.toLocaleDateString(), dateKey });
+                // Only count lessons in the day's regular slots against capacity (see bookLesson).
+                const regularBooked = booked.filter(l => dayTimes.includes(l.time)).length;
+                if (blocked || !timeOffered || booked.some(l => l.time === time) || regularBooked >= maxForDay) conflicts.push({ date: lessonDate, dateString: lessonDate.toLocaleDateString(), dateKey });
             }
             return conflicts;
         };
@@ -356,8 +363,10 @@
                 const dateKey = formatDateKey(lessonDate);
                 if (!conflictKeys.has(dateKey)) {
                     const current = (newLessons[dateKey] || []).filter(l => !cancelledLessons.has(`${dateKey}-${l.time}`));
-                    const maxForDay = getLessonTimesForDate(lessonDate.getFullYear(), lessonDate.getMonth(), lessonDate.getDate()).length;
-                    if (current.length < maxForDay && !current.some(l => l.time === time)) {
+                    const weekDayTimes = getLessonTimesForDate(lessonDate.getFullYear(), lessonDate.getMonth(), lessonDate.getDate());
+                    const maxForDay = weekDayTimes.length;
+                    const regularBooked = current.filter(l => weekDayTimes.includes(l.time)).length;
+                    if (regularBooked < maxForDay && !current.some(l => l.time === time)) {
                         const slotKey = `${dateKey}-${time}`;
                         // Drop any cancelled ghost in this slot and remember the slot so its stale
                         // cancelled key gets cleared (otherwise the new lesson shows cancelled).
@@ -522,8 +531,10 @@ END:VEVENT
                     const dateKey = `${lessonDate.getFullYear()}-${lessonDate.getMonth()}-${lessonDate.getDate()}`;
                     if (!conflictKeys.has(dateKey)) {
                         const current = (bookedLessons[dateKey] || []).filter(l => !cancelledLessons.has(`${dateKey}-${l.time}`));
-                        const maxForDay = getLessonTimesForDate(lessonDate.getFullYear(), lessonDate.getMonth(), lessonDate.getDate()).length;
-                        if (current.length < maxForDay && !current.some(l => l.time === selectedTime)) {
+                        const weekDayTimes = getLessonTimesForDate(lessonDate.getFullYear(), lessonDate.getMonth(), lessonDate.getDate());
+                        const maxForDay = weekDayTimes.length;
+                        const regularBooked = current.filter(l => weekDayTimes.includes(l.time)).length;
+                        if (regularBooked < maxForDay && !current.some(l => l.time === selectedTime)) {
                             bookedDates.push({ year: lessonDate.getFullYear(), month: lessonDate.getMonth(), day: lessonDate.getDate(), time: selectedTime });
                         }
                     }

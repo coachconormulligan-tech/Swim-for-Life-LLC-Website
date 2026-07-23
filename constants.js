@@ -22,3 +22,6 @@ const parseLocalDate = (str) => {
 // Calculate age from birthday - shared helper function
 const calculateAge = (birthday) => { if (!birthday) return ''; const today = new Date(); const birth = new Date(birthday); let age = today.getFullYear() - birth.getFullYear(); const monthDiff = today.getMonth() - birth.getMonth(); if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) age--; return age; };
 const formatBirthday = (birthday) => { if (!birthday) return ''; const d = new Date(birthday); return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`; };
+
+// Extract the last word of a full name for last-name sorting/display (e.g. "Mary Jane Smith" -> "Smith").
+const getLastName = (name) => { if (!name) return ''; const parts = name.trim().split(/\s+/); return parts[parts.length - 1]; };

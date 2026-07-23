@@ -53,6 +53,9 @@
         // Student contact editing state
         const [editingStudentContact, setEditingStudentContact] = useState(null);
         const [editContactData, setEditContactData] = useState({ parentName: '', email: '', phone: '' });
+        // Student profile (name/birthday) editing state
+        const [editingStudentProfile, setEditingStudentProfile] = useState(false);
+        const [editProfileData, setEditProfileData] = useState({ name: '', birthday: '' });
         const [selectedRevenueYear, setSelectedRevenueYear] = useState(new Date().getFullYear());
 
         // Helper to get lesson times for a specific weekday (optionally pool-specific)
@@ -380,8 +383,12 @@
                 const dateKey = `${year}-${month}-${day}`;
                 const booked = (bookedLessons[dateKey] || []).filter(l => !cancelledLessons.has(`${dateKey}-${l.time}`));
                 const dayOfWeek = checkDate.getDay();
-                const maxForDay = getLessonTimesForDate(year, month, day, poolId).length;
-                if (!isDateBlocked(year, month, day, poolId) && booked.length < maxForDay) return checkDate;
+                const dayTimes = getLessonTimesForDate(year, month, day, poolId);
+                const maxForDay = dayTimes.length;
+                // Only count lessons in the day's regular slots against capacity — a manually
+                // added lesson at an irregular time shouldn't block the last regular slot.
+                const regularBooked = booked.filter(l => dayTimes.includes(l.time)).length;
+                if (!isDateBlocked(year, month, day, poolId) && regularBooked < maxForDay) return checkDate;
                 checkDate.setDate(checkDate.getDate() + 1);
             }
             return new Date();
@@ -695,6 +702,109 @@
             setEditContactData({ parentName: '', email: '', phone: '' });
         };
 
+        // Rename/update a student's name and birthday everywhere they appear: lesson
+        // records (as swimmer1 or swimmer2), the manual student record, and their notes
+        // (which are keyed by the lowercased name, so a rename must move the note too).
+        const updateStudentProfile = async (oldName, newName, newBirthday) => {
+            const trimmedNewName = newName.trim();
+            if (!trimmedNewName) return;
+            const oldKey = oldName.toLowerCase().trim();
+            const newKey = trimmedNewName.toLowerCase().trim();
+
+            let newBookedLessons = { ...bookedLessons };
+            let lessonsUpdated = false;
+            Object.entries(newBookedLessons).forEach(([dateKey, lessons]) => {
+                newBookedLessons[dateKey] = lessons.map(lesson => {
+                    let changedLesson = lesson;
+                    if (lesson.swimmer1Name && lesson.swimmer1Name.toLowerCase().trim() === oldKey) {
+                        changedLesson = { ...changedLesson, swimmer1Name: trimmedNewName, swimmer1Birthday: newBirthday };
+                        lessonsUpdated = true;
+                    }
+                    if (lesson.swimmer2Name && lesson.swimmer2Name.toLowerCase().trim() === oldKey) {
+                        changedLesson = { ...changedLesson, swimmer2Name: trimmedNewName, swimmer2Birthday: newBirthday };
+                        lessonsUpdated = true;
+                    }
+                    return changedLesson;
+                });
+            });
+
+            const newManualStudents = manualStudents.map(ms =>
+                ms.name && ms.name.toLowerCase().trim() === oldKey
+                    ? { ...ms, name: trimmedNewName, birthday: newBirthday }
+                    : ms
+            );
+            const manualChanged = JSON.stringify(newManualStudents) !== JSON.stringify(manualStudents);
+
+            let newNotes = studentNotes;
+            let notesChanged = false;
+            if (newKey !== oldKey && Object.prototype.hasOwnProperty.call(studentNotes, oldKey)) {
+                newNotes = { ...studentNotes };
+                delete newNotes[oldKey];
+                newNotes[newKey] = studentNotes[oldKey];
+                notesChanged = true;
+            }
+
+            setSavingIndicator(true);
+            if (lessonsUpdated) {
+                setBookedLessons(newBookedLessons);
+                await saveLessons(newBookedLessons);
+            }
+            if (manualChanged) {
+                setManualStudents(newManualStudents);
+                await saveManualStudents(newManualStudents);
+            }
+            if (notesChanged) {
+                setStudentNotes(newNotes);
+                await saveStudentNotes(newNotes);
+            }
+            setSavingIndicator(false);
+
+            setSelectedStudentKey(newKey);
+            setEditingStudentProfile(false);
+        };
+
+        // Permanently remove a student: their manual record, their notes, and every
+        // lesson (past, upcoming, cancelled) where they appear as swimmer1 or swimmer2.
+        const deleteStudent = async (studentName) => {
+            const key = studentName.toLowerCase().trim();
+
+            let newBookedLessons = {};
+            let lessonsChanged = false;
+            Object.entries(bookedLessons).forEach(([dateKey, lessons]) => {
+                const kept = lessons.filter(lesson => {
+                    const isSwimmer1 = lesson.swimmer1Name && lesson.swimmer1Name.toLowerCase().trim() === key;
+                    const isSwimmer2 = lesson.swimmer2Name && lesson.swimmer2Name.toLowerCase().trim() === key;
+                    if (isSwimmer1 || isSwimmer2) lessonsChanged = true;
+                    return !(isSwimmer1 || isSwimmer2);
+                });
+                if (kept.length > 0) newBookedLessons[dateKey] = kept;
+            });
+
+            const newManualStudents = manualStudents.filter(ms => !(ms.name && ms.name.toLowerCase().trim() === key));
+            const manualChanged = newManualStudents.length !== manualStudents.length;
+
+            const newNotes = { ...studentNotes };
+            const notesChanged = Object.prototype.hasOwnProperty.call(newNotes, key);
+            if (notesChanged) delete newNotes[key];
+
+            setSavingIndicator(true);
+            if (lessonsChanged) {
+                setBookedLessons(newBookedLessons);
+                await saveLessons(newBookedLessons);
+            }
+            if (manualChanged) {
+                setManualStudents(newManualStudents);
+                await saveManualStudents(newManualStudents);
+            }
+            if (notesChanged) {
+                setStudentNotes(newNotes);
+                await saveStudentNotes(newNotes);
+            }
+            setSavingIndicator(false);
+
+            if (selectedStudentKey === key) setSelectedStudentKey(null);
+        };
+
         // Add a manual student (with optional contact info)
         const addManualStudent = async () => {
             if (!newStudentData.name.trim()) return;
@@ -748,16 +858,6 @@
             setSavingIndicator(false);
             setShowAddLessonModal(false);
             setNewLessonData({ date: '', time: '4:00 PM', lessonType: 'private', poolId: '' });
-        };
-
-        const deleteManualStudent = async (name) => {
-            const key = name.toLowerCase().trim();
-            const updated = manualStudents.filter(ms => ms.name.toLowerCase().trim() !== key);
-            setManualStudents(updated);
-            setSavingIndicator(true);
-            await saveManualStudents(updated);
-            setSavingIndicator(false);
-            if (selectedStudentKey === key) setSelectedStudentKey(null);
         };
 
         const getAllLessons = () => {
@@ -1198,7 +1298,7 @@ END:VEVENT
                 years: Array.from(s.years),
                 parents: Object.values(s.parents),
                 lessons: s.lessons.sort((a, b) => a.date - b.date)
-            })).sort((a, b) => a.name.localeCompare(b.name));
+            })).sort((a, b) => getLastName(a.name).localeCompare(getLastName(b.name)) || a.name.localeCompare(b.name));
         };
 
         const updateStudentNote = async (studentKey, note) => {
@@ -1846,13 +1946,45 @@ END:VEVENT
                                         {selectedStudent ? (
                                             <div style={{background: 'white', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 2px 8px rgba(0,0,0,0.08)'}}>
                                                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem'}}>
-                                                    <div>
-                                                        <h3 style={{margin: 0, color: '#1e40af'}}>{selectedStudent.name}</h3>
-                                                        {selectedStudent.birthdays.length > 0 && (
-                                                            <p style={{margin: '0.25rem 0 0 0', color: '#64748b', fontSize: '0.875rem'}}>Age: {selectedStudent.birthdays.map(b => calculateAge(b)).join(', ')}</p>
-                                                        )}
-                                                    </div>
+                                                    {editingStudentProfile ? (
+                                                        <div style={{display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1, marginRight: '1rem'}}>
+                                                            <input
+                                                                type="text"
+                                                                value={editProfileData.name}
+                                                                onChange={(e) => setEditProfileData({...editProfileData, name: e.target.value})}
+                                                                placeholder="Student name"
+                                                                className="form-input"
+                                                                style={{margin: 0, padding: '0.5rem'}}
+                                                            />
+                                                            <input
+                                                                type="date"
+                                                                value={editProfileData.birthday}
+                                                                onChange={(e) => setEditProfileData({...editProfileData, birthday: e.target.value})}
+                                                                className="form-input"
+                                                                style={{margin: 0, padding: '0.5rem'}}
+                                                            />
+                                                            <div style={{display: 'flex', gap: '0.5rem'}}>
+                                                                <button
+                                                                    onClick={() => updateStudentProfile(selectedStudent.name, editProfileData.name, editProfileData.birthday)}
+                                                                    disabled={!editProfileData.name.trim()}
+                                                                    style={{padding: '0.375rem 0.75rem', background: '#059669', color: 'white', border: 'none', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit'}}
+                                                                >Save</button>
+                                                                <button
+                                                                    onClick={() => setEditingStudentProfile(false)}
+                                                                    style={{padding: '0.375rem 0.75rem', background: '#64748b', color: 'white', border: 'none', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit'}}
+                                                                >Cancel</button>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div>
+                                                            <h3 style={{margin: 0, color: '#1e40af'}}>{selectedStudent.name}</h3>
+                                                            {selectedStudent.birthdays.length > 0 && (
+                                                                <p style={{margin: '0.25rem 0 0 0', color: '#64748b', fontSize: '0.875rem'}}>Age: {selectedStudent.birthdays.map(b => calculateAge(b)).join(', ')}</p>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                     <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center'}}>
+                                                        {!editingStudentProfile && <>
                                                         <button
                                                             onClick={() => {
                                                                 const today = new Date();
@@ -1862,14 +1994,17 @@ END:VEVENT
                                                             }}
                                                             style={{padding: '0.4rem 0.8rem', background: '#059669', color: 'white', border: 'none', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600}}
                                                         >+ Add Lesson</button>
-                                                        {selectedStudent.isManual && selectedStudent.totalLessons === 0 && (
-                                                            <button
-                                                                onClick={() => { if (confirm(`Remove ${selectedStudent.name}?`)) deleteManualStudent(selectedStudent.name); }}
-                                                                style={{padding: '0.4rem 0.8rem', background: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600}}
-                                                            >Delete</button>
-                                                        )}
                                                         <button
-                                                            onClick={() => setSelectedStudentKey(null)}
+                                                            onClick={() => { setEditingStudentProfile(true); setEditProfileData({ name: selectedStudent.name, birthday: selectedStudent.birthdays[0] || '' }); }}
+                                                            style={{padding: '0.4rem 0.8rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600}}
+                                                        >Edit</button>
+                                                        <button
+                                                            onClick={() => { if (confirm(`Remove ${selectedStudent.name}? This permanently deletes their profile and ALL of their booked lessons (past and upcoming). This cannot be undone.`)) deleteStudent(selectedStudent.name); }}
+                                                            style={{padding: '0.4rem 0.8rem', background: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600}}
+                                                        >Delete</button>
+                                                        </>}
+                                                        <button
+                                                            onClick={() => { setSelectedStudentKey(null); setEditingStudentProfile(false); }}
                                                             style={{background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#64748b'}}
                                                         >×</button>
                                                     </div>

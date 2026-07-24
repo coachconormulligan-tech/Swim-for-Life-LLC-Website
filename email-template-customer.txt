@@ -82,10 +82,16 @@
                 <div style="background:#f8fafc;border-radius:10px;padding:14px 18px;color:#1e293b;font-size:14px;font-weight:500;white-space:pre-line;line-height:1.9;">{{swimmer_info}}</div>
               </div>
 
-              <!-- SCHEDULED LESSONS -->
+              <!-- NEWLY BOOKED LESSON(S) -->
               <div style="margin-bottom:28px;">
-                <div style="color:#0ea5e9;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:12px;border-bottom:2px solid #e0f2fe;padding-bottom:6px;">Scheduled Lesson(s)</div>
-                <div style="background:#f8fafc;border-radius:10px;padding:14px 18px;color:#1e293b;font-size:14px;white-space:pre-line;line-height:2.1;">{{lesson_dates}}</div>
+                <div style="color:#0ea5e9;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:12px;border-bottom:2px solid #e0f2fe;padding-bottom:6px;">Newly Booked Lesson(s)</div>
+                <div style="background:#f8fafc;border-radius:10px;padding:14px 18px;color:#1e293b;font-size:14px;white-space:pre-line;line-height:2.1;">{{newly_booked_lessons}}</div>
+              </div>
+
+              <!-- ALL UPCOMING LESSONS -->
+              <div style="margin-bottom:28px;">
+                <div style="color:#0ea5e9;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:12px;border-bottom:2px solid #e0f2fe;padding-bottom:6px;">All Upcoming Lesson(s)</div>
+                <div style="background:#f8fafc;border-radius:10px;padding:14px 18px;color:#1e293b;font-size:14px;white-space:pre-line;line-height:2.1;">{{upcoming_lessons}}</div>
               </div>
 
               <!-- WHAT TO BRING -->

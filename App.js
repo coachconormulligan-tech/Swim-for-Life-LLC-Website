@@ -650,14 +650,19 @@
             setSavingIndicator(false);
             if (editLessonData.emailConfirmation && updatedLesson.email) {
                 const [ny, nm, nd] = newDateKey.split('-').map(Number);
-                sendConfirmationEmailForEmail(updatedLesson.email, updatedLesson.parentName, {
-                    date: new Date(ny, nm, nd),
-                    dateKey: newDateKey,
-                    time: newTime,
-                    poolId: updatedLesson.poolId,
-                    lessonType: updatedLesson.lessonType,
-                    swimmer1Name: updatedLesson.swimmer1Name,
-                    swimmer2Name: updatedLesson.swimmer2Name
+                sendConfirmationEmail({
+                    email: updatedLesson.email,
+                    parentName: updatedLesson.parentName,
+                    swimmerNames: [updatedLesson.swimmer1Name, updatedLesson.swimmer2Name],
+                    pendingLesson: {
+                        date: new Date(ny, nm, nd),
+                        dateKey: newDateKey,
+                        time: newTime,
+                        poolId: updatedLesson.poolId,
+                        lessonType: updatedLesson.lessonType,
+                        swimmer1Name: updatedLesson.swimmer1Name,
+                        swimmer2Name: updatedLesson.swimmer2Name
+                    }
                 });
             }
             setEditingLesson(null);
@@ -871,52 +876,64 @@
             setSavingIndicator(false);
             setShowAddLessonModal(false);
             if (newLessonData.emailConfirmation && lesson.email) {
-                sendConfirmationEmailForEmail(lesson.email, lesson.parentName, {
-                    date: new Date(yr, mo - 1, dy),
-                    dateKey,
-                    time: lesson.time,
-                    poolId: lesson.poolId,
-                    lessonType: lesson.lessonType,
-                    swimmer1Name: lesson.swimmer1Name,
-                    swimmer2Name: lesson.swimmer2Name
+                sendConfirmationEmail({
+                    email: lesson.email,
+                    parentName: lesson.parentName,
+                    swimmerNames: [lesson.swimmer1Name, lesson.swimmer2Name],
+                    pendingLesson: {
+                        date: new Date(yr, mo - 1, dy),
+                        dateKey,
+                        time: lesson.time,
+                        poolId: lesson.poolId,
+                        lessonType: lesson.lessonType,
+                        swimmer1Name: lesson.swimmer1Name,
+                        swimmer2Name: lesson.swimmer2Name
+                    }
                 });
             }
             setNewLessonData({ date: '', time: '4:00 PM', lessonType: 'private', poolId: '', emailConfirmation: true });
         };
 
         // Sends the customer confirmation email (the same template used after an online
-        // booking), listing every upcoming lesson found for `email` — not just one lesson.
-        // Used for the manual "Send Confirmation Email" action and after admin-side
-        // add/reschedule actions. `pendingLesson` is an optional lesson not yet reflected in
-        // `bookedLessons` state (state hasn't re-rendered yet at the point this is called) —
-        // it gets merged into the upcoming list so the email doesn't omit it.
-        const sendConfirmationEmailForEmail = (email, parentNameOverride, pendingLesson) => {
+        // booking). It has two sections: the lesson just added/rescheduled (`pendingLesson`,
+        // if any — omitted for a plain manual resend), and the FULL upcoming schedule for
+        // `swimmerNames` only (not every sibling under the same parent email). Used by the
+        // manual "Send Confirmation Email" action and after admin-side add/reschedule
+        // actions. `pendingLesson` isn't yet reflected in `bookedLessons` state (state
+        // hasn't re-rendered yet at the point this is called), so it's merged in by hand.
+        const sendConfirmationEmail = ({ email, parentName, swimmerNames, pendingLesson }) => {
             if (!email) { alert('No email on file — cannot send a confirmation.'); return; }
-            const upcoming = getUpcomingLessonsForEmail(email, bookedLessons, cancelledLessons, pools);
+            const names = (swimmerNames || []).filter(Boolean);
+            if (names.length === 0) { alert('No swimmer identified — cannot send a confirmation.'); return; }
+
+            const upcoming = getUpcomingLessonsForSwimmers(names, bookedLessons, cancelledLessons, pools);
+            let pendingEntry = null;
             if (pendingLesson) {
-                const alreadyIncluded = upcoming.some(l => l.dateKey === pendingLesson.dateKey && l.time === pendingLesson.time);
-                if (!alreadyIncluded) {
-                    const poolObj = pendingLesson.poolId ? pools.find(p => p.id === pendingLesson.poolId) : null;
-                    upcoming.push({
-                        date: pendingLesson.date,
-                        dateKey: pendingLesson.dateKey,
-                        time: pendingLesson.time,
-                        lessonType: pendingLesson.lessonType,
-                        swimmerNames: pendingLesson.lessonType === 'group' && pendingLesson.swimmer2Name
-                            ? `${pendingLesson.swimmer1Name} & ${pendingLesson.swimmer2Name}`
-                            : pendingLesson.swimmer1Name,
-                        poolName: poolObj ? poolObj.name : '',
-                        poolAddress: poolObj ? (poolObj.address || '') : ''
-                    });
-                    upcoming.sort((a, b) => a.date - b.date || a.time.localeCompare(b.time));
-                }
+                // Build the entry fresh from `pendingLesson` (the just-saved data) rather than
+                // trusting anything already in `upcoming` — `bookedLessons` is stale here, so if
+                // the date/time didn't change but the pool/type did, a stale entry at that same
+                // dateKey+time would still show the OLD pool/type otherwise.
+                const poolObj = pendingLesson.poolId ? pools.find(p => p.id === pendingLesson.poolId) : null;
+                pendingEntry = {
+                    date: pendingLesson.date,
+                    dateKey: pendingLesson.dateKey,
+                    time: pendingLesson.time,
+                    lessonType: pendingLesson.lessonType,
+                    swimmerNames: pendingLesson.lessonType === 'group' && pendingLesson.swimmer2Name
+                        ? `${pendingLesson.swimmer1Name} & ${pendingLesson.swimmer2Name}`
+                        : pendingLesson.swimmer1Name,
+                    poolName: poolObj ? poolObj.name : '',
+                    poolAddress: poolObj ? (poolObj.address || '') : ''
+                };
+                const staleIndex = upcoming.findIndex(l => l.dateKey === pendingLesson.dateKey && l.time === pendingLesson.time);
+                if (staleIndex >= 0) upcoming[staleIndex] = pendingEntry;
+                else upcoming.push(pendingEntry);
+                upcoming.sort((a, b) => a.date - b.date || a.time.localeCompare(b.time));
             }
-            if (upcoming.length === 0) { alert('No upcoming lessons found for that email — nothing to confirm.'); return; }
+            if (upcoming.length === 0) { alert('No upcoming lessons found for that swimmer — nothing to confirm.'); return; }
 
             const allStudents = getAllStudents();
-            const swimmerNamesSet = new Set();
-            upcoming.forEach(l => l.swimmerNames.split(' & ').forEach(n => n.trim() && swimmerNamesSet.add(n.trim())));
-            const swimmerInfo = [...swimmerNamesSet].map(name => {
+            const swimmerInfo = names.map(name => {
                 const rec = allStudents.find(s => s.name && s.name.toLowerCase().trim() === name.toLowerCase().trim());
                 const birthday = rec && rec.birthdays && rec.birthdays.length > 0 ? rec.birthdays[0] : null;
                 return birthday ? `${name} (Age: ${calculateAge(birthday)})` : name;
@@ -925,14 +942,18 @@
             const nearest = upcoming[0];
             const price = nearest.lessonType === 'group' ? 70 : 40;
             const lessonTypeDisplay = nearest.lessonType === 'private' ? 'Private (1 swimmer)' : 'Group (2 swimmers)';
+            const newlyBookedFormatted = pendingEntry
+                ? formatUpcomingLessonsList([pendingEntry])
+                : 'This is a manual confirmation email — see your full upcoming schedule below.';
 
             const customerParams = {
-                parent_name: parentNameOverride || '',
+                parent_name: parentName || '',
                 lesson_type: lessonTypeDisplay,
                 total_lessons: upcoming.length,
                 price_per_lesson: `$${price}`,
                 swimmer_info: swimmerInfo,
-                lesson_dates: formatUpcomingLessonsList(upcoming),
+                newly_booked_lessons: newlyBookedFormatted,
+                upcoming_lessons: formatUpcomingLessonsList(upcoming),
                 parent_email: email,
                 pool_name: nearest.poolName,
                 pool_address: nearest.poolAddress
@@ -2082,7 +2103,7 @@ END:VEVENT
                                                             onClick={() => {
                                                                 const parent = selectedStudent.parents.find(p => p.email) || null;
                                                                 if (!parent) { alert(`No email on file for ${selectedStudent.name}. Add contact info first.`); return; }
-                                                                sendConfirmationEmailForEmail(parent.email, parent.name);
+                                                                sendConfirmationEmail({ email: parent.email, parentName: parent.name, swimmerNames: [selectedStudent.name] });
                                                             }}
                                                             style={{padding: '0.4rem 0.8rem', background: '#0ea5e9', color: 'white', border: 'none', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600}}
                                                         >Send Confirmation Email</button>

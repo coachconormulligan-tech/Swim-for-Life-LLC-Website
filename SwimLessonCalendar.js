@@ -420,11 +420,13 @@
             const poolName = poolObj ? poolObj.name : '';
             const poolAddress = poolObj ? (poolObj.address || '') : '';
 
-            // The customer email always lists the swimmer's FULL upcoming schedule, not just
-            // this transaction's dates. `bookedLessons` state hasn't re-rendered yet at this
-            // point, so the new dates aren't in it — merge them in alongside whatever else
-            // was already booked under this email.
-            const priorUpcoming = getUpcomingLessonsForEmail(lessonInfo.email, bookedLessons, cancelledLessons, pools);
+            // The customer email has two sections: the lesson(s) just booked in this
+            // transaction, and the swimmer's (or swimmer pair's) FULL upcoming schedule —
+            // restricted to that swimmer, not every sibling under the same parent email.
+            // `bookedLessons` state hasn't re-rendered yet at this point, so the new dates
+            // aren't in it — merge them in alongside whatever was already booked.
+            const swimmerNames = [lessonInfo.swimmer1Name, lessonInfo.swimmer2Name];
+            const priorUpcoming = getUpcomingLessonsForSwimmers(swimmerNames, bookedLessons, cancelledLessons, pools);
             const newAsUpcoming = bookedDates.map(d => ({
                 date: new Date(d.year, d.month, d.day),
                 dateKey: `${d.year}-${d.month}-${d.day}`,
@@ -433,7 +435,7 @@
                 poolName
             }));
             const allUpcoming = [...priorUpcoming, ...newAsUpcoming].sort((a, b) => a.date - b.date || a.time.localeCompare(b.time));
-            const allUpcomingFormatted = formatUpcomingLessonsList(allUpcoming);
+            const upcomingFormatted = formatUpcomingLessonsList(allUpcoming);
 
             // Customer email
             const customerParams = {
@@ -442,7 +444,8 @@
                 total_lessons: totalLessons,
                 price_per_lesson: `$${pricePerLesson}`,
                 swimmer_info: swimmerInfo,
-                lesson_dates: allUpcomingFormatted,
+                newly_booked_lessons: lessonDatesFormatted,
+                upcoming_lessons: upcomingFormatted,
                 parent_email: lessonInfo.email,
                 pool_name: poolName,
                 pool_address: poolAddress
@@ -721,7 +724,7 @@ END:VEVENT
                         onClick={() => setShowMyLessons(s => !s)}
                         style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', fontWeight: 600, color: '#1e40af', fontSize: '0.9rem'}}
                     >
-                        <span>📅 Already booked? Look up your upcoming lessons</span>
+                        <span>Already booked? Look up your upcoming lessons</span>
                         <span style={{fontSize: '0.8rem', color: '#64748b'}}>{showMyLessons ? '▲ Hide' : '▼ Show'}</span>
                     </div>
                     {showMyLessons && (

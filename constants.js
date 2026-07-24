@@ -26,10 +26,11 @@ const formatBirthday = (birthday) => { if (!birthday) return ''; const d = new D
 // Extract the last word of a full name for last-name sorting/display (e.g. "Mary Jane Smith" -> "Smith").
 const getLastName = (name) => { if (!name) return ''; const parts = name.trim().split(/\s+/); return parts[parts.length - 1]; };
 
-// Find every active (non-cancelled), non-past lesson booked under a given parent email.
-// Shared by: the customer confirmation email (always lists the swimmer's FULL upcoming
-// schedule, not just the lessons from the current transaction), the admin's manual
-// "Send Confirmation Email" action, and the self-service "look up my lessons" lookup.
+// Find every active (non-cancelled), non-past lesson booked under a given parent email,
+// covering EVERY swimmer under that email (siblings included). Used only by the
+// self-service "look up my lessons" lookup, where seeing the whole family's schedule is
+// the point. The confirmation email itself uses getUpcomingLessonsForSwimmers() below,
+// which is restricted to one swimmer (or pair) instead.
 const getUpcomingLessonsForEmail = (email, bookedLessons, cancelledLessons, pools) => {
     if (!email) return [];
     const emailLower = email.toLowerCase().trim();
@@ -61,8 +62,46 @@ const getUpcomingLessonsForEmail = (email, bookedLessons, cancelledLessons, pool
     return results.sort((a, b) => a.date - b.date || a.time.localeCompare(b.time));
 };
 
-// Format a getUpcomingLessonsForEmail() list into the multi-line string used by the
-// "Scheduled Lesson(s)" section of the customer confirmation email.
+// Find every active (non-cancelled), non-past lesson where ANY of the given swimmer
+// names appears as swimmer1 or swimmer2 — i.e. restricted to that swimmer (or, for a
+// group booking, that pair), unlike getUpcomingLessonsForEmail() which pulls in every
+// swimmer under the parent email. Powers the "All Upcoming Lessons" section of the
+// confirmation email.
+const getUpcomingLessonsForSwimmers = (swimmerNames, bookedLessons, cancelledLessons, pools) => {
+    const namesLower = (swimmerNames || []).filter(Boolean).map(n => n.toLowerCase().trim());
+    if (namesLower.length === 0) return [];
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const results = [];
+    Object.entries(bookedLessons || {}).forEach(([dateKey, lessons]) => {
+        const [y, m, d] = dateKey.split('-').map(Number);
+        const lessonDate = new Date(y, m, d);
+        if (lessonDate < today) return;
+        (lessons || []).forEach(lesson => {
+            const s1 = lesson.swimmer1Name ? lesson.swimmer1Name.toLowerCase().trim() : '';
+            const s2 = lesson.swimmer2Name ? lesson.swimmer2Name.toLowerCase().trim() : '';
+            if (!namesLower.includes(s1) && !namesLower.includes(s2)) return;
+            if (cancelledLessons && cancelledLessons.has(`${dateKey}-${lesson.time}`)) return;
+            const poolObj = pools && lesson.poolId ? pools.find(p => p.id === lesson.poolId) : null;
+            const swimmerNames = lesson.lessonType === 'group'
+                ? `${lesson.swimmer1Name}${lesson.swimmer2Name ? ' & ' + lesson.swimmer2Name : ''}`
+                : lesson.swimmer1Name;
+            results.push({
+                date: lessonDate,
+                dateKey,
+                time: lesson.time,
+                lessonType: lesson.lessonType,
+                swimmerNames,
+                poolId: lesson.poolId || '',
+                poolName: poolObj ? poolObj.name : '',
+                poolAddress: poolObj ? (poolObj.address || '') : ''
+            });
+        });
+    });
+    return results.sort((a, b) => a.date - b.date || a.time.localeCompare(b.time));
+};
+
+// Format a getUpcomingLessonsForEmail()/getUpcomingLessonsForSwimmers() list into the
+// multi-line string used by the confirmation email's lesson-list sections.
 const formatUpcomingLessonsList = (lessons) => lessons.map((l, i) => {
     const dateStr = l.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
     const poolSuffix = l.poolName ? ` — ${l.poolName}` : '';

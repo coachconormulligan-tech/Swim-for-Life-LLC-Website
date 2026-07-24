@@ -37,7 +37,7 @@
         const [showAddStudentModal, setShowAddStudentModal] = useState(false);
         const [newStudentData, setNewStudentData] = useState({ name: '', birthday: '', parentName: '', email: '', phone: '' });
         const [showAddLessonModal, setShowAddLessonModal] = useState(false);
-        const [newLessonData, setNewLessonData] = useState({ date: '', time: '4:00 PM', lessonType: 'private', poolId: '' });
+        const [newLessonData, setNewLessonData] = useState({ date: '', time: '4:00 PM', lessonType: 'private', poolId: '', emailConfirmation: true });
         const [savingIndicator, setSavingIndicator] = useState(false);
         // Per-weekday time settings: { 0: ['4:00 PM', '3:30 PM'], 1: [...], ... }
         const [weekdayTimeSettings, setWeekdayTimeSettings] = useState({});
@@ -582,7 +582,8 @@
                 lessonType: lesson.lessonType || 'private',
                 time: lesson.time,
                 newDateKey: lesson.dateKey,
-                poolId: lesson.poolId || ''
+                poolId: lesson.poolId || '',
+                emailConfirmation: false
             });
         };
 
@@ -647,6 +648,18 @@
             await saveLessons(newBookedLessons);
             await syncStudentFromLesson(updatedLesson);
             setSavingIndicator(false);
+            if (editLessonData.emailConfirmation && updatedLesson.email) {
+                const [ny, nm, nd] = newDateKey.split('-').map(Number);
+                sendConfirmationEmailForEmail(updatedLesson.email, updatedLesson.parentName, {
+                    date: new Date(ny, nm, nd),
+                    dateKey: newDateKey,
+                    time: newTime,
+                    poolId: updatedLesson.poolId,
+                    lessonType: updatedLesson.lessonType,
+                    swimmer1Name: updatedLesson.swimmer1Name,
+                    swimmer2Name: updatedLesson.swimmer2Name
+                });
+            }
             setEditingLesson(null);
             setEditLessonData({});
         };
@@ -857,7 +870,78 @@
             await syncStudentFromLesson(lesson);
             setSavingIndicator(false);
             setShowAddLessonModal(false);
-            setNewLessonData({ date: '', time: '4:00 PM', lessonType: 'private', poolId: '' });
+            if (newLessonData.emailConfirmation && lesson.email) {
+                sendConfirmationEmailForEmail(lesson.email, lesson.parentName, {
+                    date: new Date(yr, mo - 1, dy),
+                    dateKey,
+                    time: lesson.time,
+                    poolId: lesson.poolId,
+                    lessonType: lesson.lessonType,
+                    swimmer1Name: lesson.swimmer1Name,
+                    swimmer2Name: lesson.swimmer2Name
+                });
+            }
+            setNewLessonData({ date: '', time: '4:00 PM', lessonType: 'private', poolId: '', emailConfirmation: true });
+        };
+
+        // Sends the customer confirmation email (the same template used after an online
+        // booking), listing every upcoming lesson found for `email` — not just one lesson.
+        // Used for the manual "Send Confirmation Email" action and after admin-side
+        // add/reschedule actions. `pendingLesson` is an optional lesson not yet reflected in
+        // `bookedLessons` state (state hasn't re-rendered yet at the point this is called) —
+        // it gets merged into the upcoming list so the email doesn't omit it.
+        const sendConfirmationEmailForEmail = (email, parentNameOverride, pendingLesson) => {
+            if (!email) { alert('No email on file — cannot send a confirmation.'); return; }
+            const upcoming = getUpcomingLessonsForEmail(email, bookedLessons, cancelledLessons, pools);
+            if (pendingLesson) {
+                const alreadyIncluded = upcoming.some(l => l.dateKey === pendingLesson.dateKey && l.time === pendingLesson.time);
+                if (!alreadyIncluded) {
+                    const poolObj = pendingLesson.poolId ? pools.find(p => p.id === pendingLesson.poolId) : null;
+                    upcoming.push({
+                        date: pendingLesson.date,
+                        dateKey: pendingLesson.dateKey,
+                        time: pendingLesson.time,
+                        lessonType: pendingLesson.lessonType,
+                        swimmerNames: pendingLesson.lessonType === 'group' && pendingLesson.swimmer2Name
+                            ? `${pendingLesson.swimmer1Name} & ${pendingLesson.swimmer2Name}`
+                            : pendingLesson.swimmer1Name,
+                        poolName: poolObj ? poolObj.name : '',
+                        poolAddress: poolObj ? (poolObj.address || '') : ''
+                    });
+                    upcoming.sort((a, b) => a.date - b.date || a.time.localeCompare(b.time));
+                }
+            }
+            if (upcoming.length === 0) { alert('No upcoming lessons found for that email — nothing to confirm.'); return; }
+
+            const allStudents = getAllStudents();
+            const swimmerNamesSet = new Set();
+            upcoming.forEach(l => l.swimmerNames.split(' & ').forEach(n => n.trim() && swimmerNamesSet.add(n.trim())));
+            const swimmerInfo = [...swimmerNamesSet].map(name => {
+                const rec = allStudents.find(s => s.name && s.name.toLowerCase().trim() === name.toLowerCase().trim());
+                const birthday = rec && rec.birthdays && rec.birthdays.length > 0 ? rec.birthdays[0] : null;
+                return birthday ? `${name} (Age: ${calculateAge(birthday)})` : name;
+            }).join('\n');
+
+            const nearest = upcoming[0];
+            const price = nearest.lessonType === 'group' ? 70 : 40;
+            const lessonTypeDisplay = nearest.lessonType === 'private' ? 'Private (1 swimmer)' : 'Group (2 swimmers)';
+
+            const customerParams = {
+                parent_name: parentNameOverride || '',
+                lesson_type: lessonTypeDisplay,
+                total_lessons: upcoming.length,
+                price_per_lesson: `$${price}`,
+                swimmer_info: swimmerInfo,
+                lesson_dates: formatUpcomingLessonsList(upcoming),
+                parent_email: email,
+                pool_name: nearest.poolName,
+                pool_address: nearest.poolAddress
+            };
+
+            setSavingIndicator(true);
+            emailjs.send('service_m2kd61t', 'template_8urgsqv', customerParams)
+                .then(() => { setSavingIndicator(false); alert(`Confirmation email sent to ${email}.`); })
+                .catch(err => { setSavingIndicator(false); console.error('Confirmation email failed:', err); alert('Failed to send confirmation email. Check the console for details.'); });
         };
 
         const getAllLessons = () => {
@@ -1989,11 +2073,19 @@ END:VEVENT
                                                             onClick={() => {
                                                                 const today = new Date();
                                                                 const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-                                                                setNewLessonData({ date: dateStr, time: '4:00 PM', lessonType: 'private', poolId: '' });
+                                                                setNewLessonData({ date: dateStr, time: '4:00 PM', lessonType: 'private', poolId: '', emailConfirmation: true });
                                                                 setShowAddLessonModal(true);
                                                             }}
                                                             style={{padding: '0.4rem 0.8rem', background: '#059669', color: 'white', border: 'none', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600}}
                                                         >+ Add Lesson</button>
+                                                        <button
+                                                            onClick={() => {
+                                                                const parent = selectedStudent.parents.find(p => p.email) || null;
+                                                                if (!parent) { alert(`No email on file for ${selectedStudent.name}. Add contact info first.`); return; }
+                                                                sendConfirmationEmailForEmail(parent.email, parent.name);
+                                                            }}
+                                                            style={{padding: '0.4rem 0.8rem', background: '#0ea5e9', color: 'white', border: 'none', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600}}
+                                                        >Send Confirmation Email</button>
                                                         <button
                                                             onClick={() => { setEditingStudentProfile(true); setEditProfileData({ name: selectedStudent.name, birthday: selectedStudent.birthdays[0] || '' }); }}
                                                             style={{padding: '0.4rem 0.8rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600}}
@@ -2347,6 +2439,11 @@ END:VEVENT
                                             </div>
                                         </div>
                                     )}
+
+                                    <label style={{display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', borderTop: '1px solid #e2e8f0', paddingTop: '0.75rem', marginTop: '0.25rem', cursor: 'pointer'}}>
+                                        <input type="checkbox" checked={!!editLessonData.emailConfirmation} onChange={(e) => setEditLessonData({...editLessonData, emailConfirmation: e.target.checked})} />
+                                        Email an updated confirmation to the parent
+                                    </label>
                                 </div>
                                     );
                                 })()}
@@ -2460,6 +2557,10 @@ END:VEVENT
                                                 </select>
                                             </div>
                                         )}
+                                        <label style={{display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', marginTop: '0.75rem', cursor: 'pointer'}}>
+                                            <input type="checkbox" checked={newLessonData.emailConfirmation} onChange={(e) => setNewLessonData({...newLessonData, emailConfirmation: e.target.checked})} />
+                                            Email a booking confirmation to the parent
+                                        </label>
                                         </>
                                     );
                                 })()}

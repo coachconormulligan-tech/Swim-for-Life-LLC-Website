@@ -25,3 +25,46 @@ const formatBirthday = (birthday) => { if (!birthday) return ''; const d = new D
 
 // Extract the last word of a full name for last-name sorting/display (e.g. "Mary Jane Smith" -> "Smith").
 const getLastName = (name) => { if (!name) return ''; const parts = name.trim().split(/\s+/); return parts[parts.length - 1]; };
+
+// Find every active (non-cancelled), non-past lesson booked under a given parent email.
+// Shared by: the customer confirmation email (always lists the swimmer's FULL upcoming
+// schedule, not just the lessons from the current transaction), the admin's manual
+// "Send Confirmation Email" action, and the self-service "look up my lessons" lookup.
+const getUpcomingLessonsForEmail = (email, bookedLessons, cancelledLessons, pools) => {
+    if (!email) return [];
+    const emailLower = email.toLowerCase().trim();
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const results = [];
+    Object.entries(bookedLessons || {}).forEach(([dateKey, lessons]) => {
+        const [y, m, d] = dateKey.split('-').map(Number);
+        const lessonDate = new Date(y, m, d);
+        if (lessonDate < today) return;
+        (lessons || []).forEach(lesson => {
+            if (!lesson.email || lesson.email.toLowerCase().trim() !== emailLower) return;
+            if (cancelledLessons && cancelledLessons.has(`${dateKey}-${lesson.time}`)) return;
+            const poolObj = pools && lesson.poolId ? pools.find(p => p.id === lesson.poolId) : null;
+            const swimmerNames = lesson.lessonType === 'group'
+                ? `${lesson.swimmer1Name}${lesson.swimmer2Name ? ' & ' + lesson.swimmer2Name : ''}`
+                : lesson.swimmer1Name;
+            results.push({
+                date: lessonDate,
+                dateKey,
+                time: lesson.time,
+                lessonType: lesson.lessonType,
+                swimmerNames,
+                poolId: lesson.poolId || '',
+                poolName: poolObj ? poolObj.name : '',
+                poolAddress: poolObj ? (poolObj.address || '') : ''
+            });
+        });
+    });
+    return results.sort((a, b) => a.date - b.date || a.time.localeCompare(b.time));
+};
+
+// Format a getUpcomingLessonsForEmail() list into the multi-line string used by the
+// "Scheduled Lesson(s)" section of the customer confirmation email.
+const formatUpcomingLessonsList = (lessons) => lessons.map((l, i) => {
+    const dateStr = l.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+    const poolSuffix = l.poolName ? ` — ${l.poolName}` : '';
+    return `${i + 1}. ${dateStr} at ${l.time}${poolSuffix}`;
+}).join('\n');

@@ -26,6 +26,9 @@
         const pendingEmailDatesRef = React.useRef([]); // Track dates synchronously for email
         const [showSuccessModal, setShowSuccessModal] = useState(false);
         const [bookedDatesForCalendar, setBookedDatesForCalendar] = useState([]);
+        const [showMyLessons, setShowMyLessons] = useState(false);
+        const [myLessonsEmail, setMyLessonsEmail] = useState('');
+        const [myLessonsResult, setMyLessonsResult] = useState(null); // null = not searched yet, [] = searched but none found
 
         // Helper to get lesson times for a specific weekday (uses selected pool if set)
         const getLessonTimesForDay = (dayIndex) => {
@@ -75,6 +78,16 @@
         const validateEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
         const validatePhone = (p) => /^[\d\s\-\+\(\)]{10,}$/.test(p.replace(/\s/g, ''));
         const formatPhoneNumber = (v) => { const n = v.replace(/\D/g, ''); if (n.length <= 3) return n; if (n.length <= 6) return `(${n.slice(0, 3)}) ${n.slice(3)}`; return `(${n.slice(0, 3)}) ${n.slice(3, 6)}-${n.slice(6, 10)}`; };
+
+        // Self-service "look up my upcoming lessons" — separate from the returning-user
+        // form-prefill lookup below; this one just displays the swimmer's schedule.
+        const handleLookupMyLessons = () => {
+            if (!myLessonsEmail || !validateEmail(myLessonsEmail)) {
+                setMyLessonsResult('invalid');
+                return;
+            }
+            setMyLessonsResult(getUpcomingLessonsForEmail(myLessonsEmail, bookedLessons, cancelledLessons, pools));
+        };
 
         // Look up returning user by email - finds all unique swimmers
         const lookupUserByEmail = () => {
@@ -407,6 +420,21 @@
             const poolName = poolObj ? poolObj.name : '';
             const poolAddress = poolObj ? (poolObj.address || '') : '';
 
+            // The customer email always lists the swimmer's FULL upcoming schedule, not just
+            // this transaction's dates. `bookedLessons` state hasn't re-rendered yet at this
+            // point, so the new dates aren't in it — merge them in alongside whatever else
+            // was already booked under this email.
+            const priorUpcoming = getUpcomingLessonsForEmail(lessonInfo.email, bookedLessons, cancelledLessons, pools);
+            const newAsUpcoming = bookedDates.map(d => ({
+                date: new Date(d.year, d.month, d.day),
+                dateKey: `${d.year}-${d.month}-${d.day}`,
+                time: d.time,
+                lessonType: lessonInfo.lessonType,
+                poolName
+            }));
+            const allUpcoming = [...priorUpcoming, ...newAsUpcoming].sort((a, b) => a.date - b.date || a.time.localeCompare(b.time));
+            const allUpcomingFormatted = formatUpcomingLessonsList(allUpcoming);
+
             // Customer email
             const customerParams = {
                 parent_name: lessonInfo.parentName,
@@ -414,7 +442,7 @@
                 total_lessons: totalLessons,
                 price_per_lesson: `$${pricePerLesson}`,
                 swimmer_info: swimmerInfo,
-                lesson_dates: lessonDatesFormatted,
+                lesson_dates: allUpcomingFormatted,
                 parent_email: lessonInfo.email,
                 pool_name: poolName,
                 pool_address: poolAddress
@@ -687,6 +715,55 @@ END:VEVENT
 
         return (
             <div className="calendar-container">
+                {/* Self-service "look up my upcoming lessons" — no booking flow needed */}
+                <div style={{background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '1rem', marginBottom: '1.5rem'}}>
+                    <div
+                        onClick={() => setShowMyLessons(s => !s)}
+                        style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', fontWeight: 600, color: '#1e40af', fontSize: '0.9rem'}}
+                    >
+                        <span>📅 Already booked? Look up your upcoming lessons</span>
+                        <span style={{fontSize: '0.8rem', color: '#64748b'}}>{showMyLessons ? '▲ Hide' : '▼ Show'}</span>
+                    </div>
+                    {showMyLessons && (
+                        <div style={{marginTop: '0.75rem'}}>
+                            <div className="lookup-row">
+                                <div style={{flex: 1}}>
+                                    <input
+                                        type="email"
+                                        value={myLessonsEmail}
+                                        onChange={(e) => { setMyLessonsEmail(e.target.value); setMyLessonsResult(null); }}
+                                        onKeyDown={(e) => { if (e.key === 'Enter') handleLookupMyLessons(); }}
+                                        placeholder="Enter your email"
+                                        className="form-input"
+                                        style={{margin: 0}}
+                                    />
+                                </div>
+                                <button
+                                    onClick={handleLookupMyLessons}
+                                    disabled={!myLessonsEmail}
+                                    style={{padding: '0.625rem 1rem', background: myLessonsEmail ? '#0ea5e9' : '#94a3b8', color: 'white', border: 'none', borderRadius: '8px', cursor: myLessonsEmail ? 'pointer' : 'not-allowed', fontWeight: 500, fontSize: '0.875rem', fontFamily: 'inherit', whiteSpace: 'nowrap'}}
+                                >Look Up</button>
+                            </div>
+                            {myLessonsResult === 'invalid' && (
+                                <p style={{color: '#dc2626', fontSize: '0.8rem', marginTop: '0.5rem'}}>Please enter a valid email address.</p>
+                            )}
+                            {Array.isArray(myLessonsResult) && myLessonsResult.length === 0 && (
+                                <p style={{color: '#64748b', fontSize: '0.8rem', marginTop: '0.5rem'}}>No upcoming lessons found for that email.</p>
+                            )}
+                            {Array.isArray(myLessonsResult) && myLessonsResult.length > 0 && (
+                                <div style={{marginTop: '0.75rem', background: 'white', borderRadius: '8px', padding: '0.75rem 1rem', border: '1px solid #e2e8f0'}}>
+                                    {myLessonsResult.map((l, i) => (
+                                        <div key={i} style={{display: 'flex', justifyContent: 'space-between', padding: '0.4rem 0', borderBottom: i < myLessonsResult.length - 1 ? '1px solid #f1f5f9' : 'none', fontSize: '0.875rem'}}>
+                                            <span style={{color: '#1e293b'}}>{l.swimmerNames}</span>
+                                            <span style={{color: '#64748b'}}>{l.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} at {l.time}{l.poolName ? ` — ${l.poolName}` : ''}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+
                 {/* Pool selector — must be chosen before date/time */}
                 {pools && pools.length > 0 && (
                     <div className="form-group" style={{marginBottom: '1.5rem'}}>

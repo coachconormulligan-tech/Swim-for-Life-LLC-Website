@@ -341,7 +341,7 @@
         const handleAdminSignIn = async () => {
             setSignInError('');
             try { await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()); }
-            catch (e) { console.error('Sign-in failed:', e); setSignInError('Sign-in failed. Please try again.'); }
+            catch (e) { console.error('Sign-in failed:', e); setSignInError('Sign-in failed' + (e && e.code ? ' (' + e.code + ')' : '') + '. Please try again.'); }
         };
         const handleAdminSignOut = async () => {
             try { await auth.signOut(); } catch (e) { console.error('Sign-out failed:', e); }

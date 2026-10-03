@@ -50,6 +50,10 @@ h1 { font-family: 'Playfair Display', serif; font-size: 4rem; font-weight: 700; 
 .amount { font-family: 'Playfair Display', serif; font-size: 4rem; font-weight: 700; color: #1e40af; line-height: 1; }
 .duration { font-size: 1.1rem; color: #64748b; margin-top: 0.5rem; }
 .click-hint { font-size: 0.875rem; color: #3b82f6; margin-top: 1rem; font-weight: 500; }
+.info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; max-width: 800px; margin: 3rem auto 0; text-align: left; }
+.info-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 14px; padding: 1.25rem 1.5rem; }
+.info-card h3 { font-size: 0.8rem; color: #64748b; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 0.5rem; font-weight: 600; }
+.info-card p { color: #334155; line-height: 1.6; }
 .calendar-section { padding: 4rem 2rem 6rem; background: linear-gradient(180deg, #f8fafc 0%, #e0f2fe 100%); display: none; }
 .calendar-section.visible { display: block; }
 .calendar-section h2 { font-family: 'Playfair Display', serif; font-size: 2.5rem; color: #1e40af; margin-bottom: 2rem; text-align: center; }

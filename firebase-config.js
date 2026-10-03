@@ -1,5 +1,9 @@
 // Initialize Firebase - wait for scripts to load
 var db = null;
+var auth = null;
+// The only Google account allowed into the admin dashboard. The Firestore rules check
+// the same address, so changing it here alone does not grant access.
+var ADMIN_EMAIL = 'coach.conor.mulligan@gmail.com';
 var firebaseReady = false;
 try {
     var firebaseConfig = {
@@ -13,6 +17,7 @@ try {
     };
     firebase.initializeApp(firebaseConfig);
     db = firebase.firestore();
+    auth = firebase.auth();
     firebaseReady = true;
 } catch (e) {
     console.error('Firebase init error:', e);

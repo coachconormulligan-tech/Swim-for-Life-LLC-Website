@@ -2,6 +2,13 @@
         const [isLoading, setIsLoading] = useState(true);
         const [showCalendar, setShowCalendar] = useState(false);
         const [showAdmin, setShowAdmin] = useState(false);
+        // Admin access: `adminRequested` is set by visiting ?admin, `authUser` is whoever is
+        // signed in with Google (undefined until Firebase reports the auth state). The
+        // dashboard only opens for ADMIN_EMAIL, and Firestore rules enforce the same check.
+        const [adminRequested, setAdminRequested] = useState(false);
+        const [authUser, setAuthUser] = useState(undefined);
+        const [signInError, setSignInError] = useState('');
+        const isAdmin = !!(authUser && authUser.email === ADMIN_EMAIL && authUser.emailVerified);
         const [showAbout, setShowAbout] = useState(false);
         const [showContact, setShowContact] = useState(false);
         const [showLocations, setShowLocations] = useState(false);
@@ -119,10 +126,6 @@
                 if (doc.exists) setCancelledLessons(new Set(doc.data().data || []));
             }, onErr('cancelled'));
 
-            const unsubPaid = col.doc('paid').onSnapshot(doc => {
-                if (doc.exists) setPaidLessons(new Set(doc.data().data || []));
-            }, onErr('paid'));
-
             const unsubSettings = col.doc('settings').onSnapshot(doc => {
                 if (doc.exists) {
                     const s = doc.data();
@@ -135,14 +138,6 @@
                     setDateTimeSettings(s.dateTimeSettings || {});
                 }
             }, onErr('settings'));
-
-            const unsubNotes = col.doc('studentNotes').onSnapshot(doc => {
-                if (doc.exists) setStudentNotes(doc.data().data || {});
-            }, onErr('studentNotes'));
-
-            const unsubStudents = col.doc('students').onSnapshot(doc => {
-                if (doc.exists) setManualStudents(doc.data().data || []);
-            }, onErr('students'));
 
             const unsubPools = col.doc('pools').onSnapshot(doc => {
                 if (doc.exists) setPools(doc.data().data || []);
@@ -161,25 +156,48 @@
                 clearTimeout(spinnerTimeout);
                 unsubLessons();
                 unsubCancelled();
-                unsubPaid();
                 unsubSettings();
-                unsubNotes();
-                unsubStudents();
                 unsubPools();
                 unsubPoolSettings();
             };
         }, []);
 
+        // Payment status, student notes and the student list are private: only load them
+        // once the admin is signed in, so visitors' browsers never request them.
+        useEffect(() => {
+            if (!isAdmin || !db) return;
+            const col = db.collection('swimLessons');
+            const onErr = (label) => (error) => console.error('Error loading ' + label + ':', error);
+
+            const unsubPaid = col.doc('paid').onSnapshot(doc => {
+                if (doc.exists) setPaidLessons(new Set(doc.data().data || []));
+            }, onErr('paid'));
+
+            const unsubNotes = col.doc('studentNotes').onSnapshot(doc => {
+                if (doc.exists) setStudentNotes(doc.data().data || {});
+            }, onErr('studentNotes'));
+
+            const unsubStudents = col.doc('students').onSnapshot(doc => {
+                if (doc.exists) setManualStudents(doc.data().data || []);
+            }, onErr('students'));
+
+            return () => {
+                unsubPaid();
+                unsubNotes();
+                unsubStudents();
+            };
+        }, [isAdmin]);
+
         // Save functions
         const saveLessons = async (lessons) => {
             if (!db) return;
             try { await db.collection('swimLessons').doc('lessons').set({ data: lessons }); } 
-            catch (e) { console.error('Error saving lessons:', e); }
+            catch (e) { console.error('Error saving lessons:', e); alert('Something went wrong and this change may not have been saved. Please refresh the page and try again, or contact Coach Conor at 919-695-1534.'); }
         };
         const saveCancelled = async (cancelled) => {
             if (!db) return;
             try { await db.collection('swimLessons').doc('cancelled').set({ data: Array.from(cancelled) }); }
-            catch (e) { console.error('Error saving cancelled:', e); }
+            catch (e) { console.error('Error saving cancelled:', e); alert('Could not save the cancellation. Please refresh the page and try again.'); }
         };
         const savePaid = async (paid) => {
             if (!db) return;
@@ -209,12 +227,12 @@
                 };
                 await db.collection('swimLessons').doc('settings').set(settingsData);
             }
-            catch (e) { console.error('Error saving settings:', e); }
+            catch (e) { console.error('Error saving settings:', e); alert('Could not save settings. Please refresh the page and try again.'); }
         };
         const saveStudentNotes = async (notes) => {
             if (!db) return;
             try { await db.collection('swimLessons').doc('studentNotes').set({ data: notes }); }
-            catch (e) { console.error('Error saving student notes:', e); }
+            catch (e) { console.error('Error saving student notes:', e); alert('Could not save student notes. Please refresh the page and try again.'); }
         };
         const saveManualStudents = async (students) => {
             if (!db) return;
@@ -223,9 +241,11 @@
         };
 
         // Upsert a student record from a lesson's swimmer info.
-        // Called on every booking (public or admin) so the students doc stays in sync.
+        // Called on every admin booking/edit so the students doc stays in sync. Skipped for
+        // public bookings: visitors can't read or write the students doc, and the Students
+        // tab already picks those swimmers up from their lessons.
         const syncStudentFromLesson = async (lessonInfo) => {
-            if (!lessonInfo) return;
+            if (!lessonInfo || !isAdmin) return;
             let students = [...manualStudents];
             let changed = false;
 
@@ -307,8 +327,26 @@
 
         useEffect(() => {
             const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.get('admin') === 'swimforlife2026') setShowAdmin(true);
+            if (urlParams.has('admin')) setAdminRequested(true);
         }, []);
+
+        useEffect(() => {
+            if (!auth) { setAuthUser(null); return; }
+            return auth.onAuthStateChanged(user => setAuthUser(user));
+        }, []);
+
+        useEffect(() => { setShowAdmin(adminRequested && isAdmin); }, [adminRequested, isAdmin]);
+
+        const exitAdmin = () => { window.history.replaceState({}, document.title, window.location.pathname); setAdminRequested(false); };
+        const handleAdminSignIn = async () => {
+            setSignInError('');
+            try { await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()); }
+            catch (e) { console.error('Sign-in failed:', e); setSignInError('Sign-in failed. Please try again.'); }
+        };
+        const handleAdminSignOut = async () => {
+            try { await auth.signOut(); } catch (e) { console.error('Sign-out failed:', e); }
+            exitAdmin();
+        };
 
         useEffect(() => {
             if (selectedStudentKey) {
@@ -991,7 +1029,21 @@
 
         const getTotalRevenue = () => getAllLessons().filter(l => !l.isCancelled).reduce((sum, l) => sum + (l.price || 0), 0);
 
-        const exportToExcel = () => {
+        // The Excel library is only needed for admin exports, so load it on first use
+        // instead of making every visitor download it.
+        const loadXLSX = () => {
+            if (window.XLSX) return Promise.resolve();
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = 'https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js';
+                script.onload = resolve;
+                script.onerror = () => reject(new Error('Could not load the Excel library'));
+                document.head.appendChild(script);
+            });
+        };
+
+        const exportToExcel = async () => {
+            try { await loadXLSX(); } catch (e) { alert('Could not load the Excel export tool. Check your connection and try again.'); return; }
             const lessons = getAllLessons().filter(l => !l.isCancelled);
             const data = lessons.map(l => ({
                 'Date': l.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }),
@@ -1016,7 +1068,8 @@
             XLSX.writeFile(wb, `swim-lessons-${new Date().toISOString().split('T')[0]}.xlsx`);
         };
 
-        const exportCompletedToExcel = () => {
+        const exportCompletedToExcel = async () => {
+            try { await loadXLSX(); } catch (e) { alert('Could not load the Excel export tool. Check your connection and try again.'); return; }
             const today = new Date(); today.setHours(0, 0, 0, 0);
             const currentYear = new Date().getFullYear();
             const yearStart = new Date(selectedRevenueYear, 0, 1);
@@ -1426,6 +1479,34 @@ END:VEVENT
             );
         }
 
+        if (adminRequested && !isAdmin) {
+            return (
+                <div style={{minHeight: '100vh', background: 'linear-gradient(180deg, #f8fafc 0%, #e0f2fe 100%)', padding: '2rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+                    <div className="modal" style={{textAlign: 'center', maxWidth: '420px'}}>
+                        <h4>Admin Sign-In</h4>
+                        {authUser === undefined ? <p style={{color: '#475569'}}>Checking sign-in…</p> : authUser ? (
+                            <>
+                                <p style={{color: '#dc2626', marginBottom: '1.5rem'}}>{authUser.email} does not have admin access.</p>
+                                <div className="btn-row">
+                                    <button className="btn btn-secondary" onClick={() => auth.signOut()}>Use a different account</button>
+                                    <button className="btn btn-secondary" onClick={exitAdmin}>Back to site</button>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <p style={{color: '#475569', marginBottom: '1.5rem'}}>Sign in with the Swim for Life Google account to open the dashboard.</p>
+                                {signInError && <p style={{color: '#dc2626', marginBottom: '1rem'}}>{signInError}</p>}
+                                <div className="btn-row">
+                                    <button className="btn btn-primary" onClick={handleAdminSignIn}>Sign in with Google</button>
+                                    <button className="btn btn-secondary" onClick={exitAdmin}>Back to site</button>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
         if (showAdmin) {
             const allLessons = getAllLessons();
             const displayedLessons = hideCancelled ? allLessons.filter(l => !l.isCancelled) : allLessons;
@@ -1440,7 +1521,8 @@ END:VEVENT
                             <h2>Admin Dashboard</h2>
                             <div className="admin-btn-group">
                                 <button style={{padding: '0.75rem 1.5rem', background: '#dc2626', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit'}} onClick={() => setShowResetModal(true)}>Reset All Data</button>
-                                <button className="admin-close-btn" onClick={() => { window.history.replaceState({}, document.title, window.location.pathname); setShowAdmin(false); }}>Exit Admin</button>
+                                <button className="admin-close-btn" onClick={exitAdmin}>Exit Admin</button>
+                                <button className="admin-close-btn" onClick={handleAdminSignOut}>Sign Out</button>
                             </div>
                         </div>
                         <div className="admin-tabs">
@@ -2626,9 +2708,9 @@ END:VEVENT
                 <section className="hero"><div className="hero-content"><h1>Swim for Life</h1><p className="tagline">Private Swim Lessons · Ages 3 &amp; Up</p><p className="hero-subtagline">Swimming · Diving · Stroke Work</p><button className="hero-button" onClick={() => handleBookingClick(null)}>Book a private lesson</button><button className="hero-button hero-button-secondary" onClick={() => { setShowAbout(a => !a); setTimeout(() => { if (!showAbout) document.getElementById('about').scrollIntoView({ behavior: 'smooth' }); }, 50); }}>About Coach Conor</button><button className="hero-button hero-button-secondary" onClick={() => { setShowLocations(l => !l); setTimeout(() => { if (!showLocations) document.getElementById('locations').scrollIntoView({ behavior: 'smooth' }); }, 50); }}>Available Locations</button><button className="hero-button hero-button-secondary" onClick={() => { setShowContact(c => !c); setTimeout(() => { if (!showContact) document.getElementById('contact').scrollIntoView({ behavior: 'smooth' }); }, 50); }}>Contact Info</button></div></section>
                 <section className={`about-section ${showAbout ? 'visible' : ''}`} id="about"><div className="about-content"><h2>About Coach Conor</h2><div className="about-photo-wrapper"><img src="coach-conor.jpg" alt="Coach Conor Mulligan" className="about-photo" width="200" height="200" loading="lazy" /></div><p>Coach Conor is a Raleigh native with a deep love of swimming and a life of experience in the sport. He currently serves as the head coach of the Wood Valley Otters, returning this year for his fifth year. He has over ten years of coaching experience working with swimmers of all ages on technique and stroke work.</p><p>When Coach Conor is not coaching in the summer, he works as a humanities teacher for middle and high schoolers at St. Thomas More Academy. He is the head coach of the school's swim team, which he started in 2015 while he was a student.</p><p>Coach Conor graduated from Hillsdale College and now lives in Knightdale with his lovely wife and daughter. During his free time, he enjoys reading, writing, and playing board games.</p><p className="about-certified">Coach Conor is lifeguard certified.</p></div></section>
                 <section className={`locations-section ${showLocations ? 'visible' : ''}`} id="locations"><div className="locations-content"><h2>Available Locations</h2>{pools.length === 0 ? <p className="locations-empty">No locations are currently listed. Check back soon!</p> : pools.map(pool => (<div key={pool.id} className="location-card"><div className="location-name">{pool.name}</div>{pool.address && <div className="location-address">{pool.address}</div>}<div className="location-card-actions"><button className="location-book-btn" onClick={() => handleLocationBookingClick(pool.id)}>Book a lesson here</button>{pool.address && <a className="location-directions-btn" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(pool.address)}`} target="_blank" rel="noopener noreferrer">Get directions</a>}</div></div>))}</div></section>
-                <section className="pricing"><h2>Pricing</h2><div className="price-grid"><div className="price-card" onClick={() => handleBookingClick('private')}><div className="swimmers">1 Swimmer</div><div className="amount">$40</div><div className="duration">30 minutes</div><div className="click-hint">Click to book</div></div><div className="price-card" onClick={() => handleBookingClick('group')}><div className="swimmers">2 Swimmers</div><div className="amount">$70</div><div className="duration">30 minutes</div><div className="click-hint">Click to book</div></div></div></section>
+                <section className="pricing"><h2>Pricing</h2><div className="price-grid"><div className="price-card" onClick={() => handleBookingClick('private')}><div className="swimmers">1 Swimmer</div><div className="amount">$40</div><div className="duration">30 minutes</div><div className="click-hint">Click to book</div></div><div className="price-card" onClick={() => handleBookingClick('group')}><div className="swimmers">2 Swimmers</div><div className="amount">$70</div><div className="duration">30 minutes</div><div className="click-hint">Click to book</div></div></div><div className="info-grid"><div className="info-card"><h3>What to Bring</h3><p>Swimsuit, goggles and a towel.</p></div><div className="info-card"><h3>Payment</h3><p>Cash, check or Zelle.</p></div><div className="info-card"><h3>Cancellations</h3><p>Please try to give at least 24 hours notice if you need to cancel or reschedule.</p></div></div></section>
                 <section className={`calendar-section ${showCalendar ? 'visible' : ''}`} id="calendar"><h2>Book Your Lesson</h2><SwimLessonCalendar {...{preselectedType, preselectedPool, autoBookWeekly, bookedLessons, setBookedLessons, saveLessons, cancelledLessons, clearCancelledSlots, isDateBlocked, getFirstAvailableDate, getClosestAvailableTo, dateWindowEnd, lessonTypeUpdate, weekdayTimeSettings, dateTimeSettings, pools, poolSettings, syncStudentFromLesson}} /></section>
-                <section className={`contact-section ${showContact ? 'visible' : ''}`} id="contact"><div className="contact-content"><h2>Contact</h2><p className="contact-intro">Questions about lessons? Reach out anytime — I'm happy to help.</p><div className="contact-grid"><a className="contact-card" href="tel:+19196951534"><div className="contact-label">Phone</div><div className="contact-value">919-695-1534</div></a><a className="contact-card" href="mailto:coach.conor.mulligan@gmail.com"><div className="contact-label">Email</div><div className="contact-value">coach.conor.mulligan@gmail.com</div></a></div></div></section><footer><p>&copy; 2026 Swim for Life, LLC</p></footer>
+                <section className={`contact-section ${showContact ? 'visible' : ''}`} id="contact"><div className="contact-content"><h2>Contact</h2><p className="contact-intro">Questions about lessons? Reach out anytime — I'm happy to help.</p><div className="contact-grid"><a className="contact-card" href="tel:+19196951534"><div className="contact-label">Phone</div><div className="contact-value">919-695-1534</div></a><a className="contact-card" href="mailto:coach.conor.mulligan@gmail.com"><div className="contact-label">Email</div><div className="contact-value">coach.conor.mulligan@gmail.com</div></a></div></div></section><footer><p>&copy; {new Date().getFullYear()} Swim for Life, LLC</p></footer>
             </>
         );
     };

@@ -50,7 +50,7 @@ Main App component containing:
 - State Management: 27 useState hooks for UI, data, forms, admin
 - Firebase Data Loading: useEffect for loading bookings, settings, notes
 - Save Functions: saveLessons, saveCancelled, saveSettings, saveStudentNotes
-- Admin Authentication: URL param check (?admin=swimforlife2026)
+- Admin Authentication: visit ?admin, then Google sign-in (only ADMIN_EMAIL in firebase-config.js; Firestore rules enforce the same)
 - Booking Logic: isDateBlocked, getFirstAvailableDate, toggleBlockedDate
 - Lesson Management: startEditingLesson, saveEditedLesson, updateStudentContact
 - Data Aggregation: getAllLessons, getAllStudents, revenue calculations
@@ -123,7 +123,7 @@ COMMON EDIT SCENARIOS
    - Pricing CSS: styles.css (search for .pricing)
 
 5. ADMIN FUNCTIONS
-   - Authentication: App.js (search for admin=swimforlife2026)
+   - Authentication: App.js (search for adminRequested / handleAdminSignIn)
    - Block dates: App.js (toggleBlockedDate, toggleBlockedWeekday)
    - Cancel bookings: App.js (confirmCancellation, cancelSingleLesson)
    - Excel export: App.js (exportToExcel)

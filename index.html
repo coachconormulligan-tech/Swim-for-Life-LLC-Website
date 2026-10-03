@@ -17,18 +17,36 @@
     <meta property="og:image:alt" content="Coach Conor Mulligan">
     <meta name="twitter:card" content="summary">
     <meta name="theme-color" content="#1e40af">
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "LocalBusiness",
+        "name": "Swim for Life, LLC",
+        "description": "Private and semi-private swim lessons for ages 3 and up with Coach Conor Mulligan in the Raleigh, NC area.",
+        "url": "https://swimforlifellc.com/",
+        "image": "https://swimforlifellc.com/coach-conor.jpg",
+        "telephone": "+1-919-695-1534",
+        "email": "coach.conor.mulligan@gmail.com",
+        "areaServed": { "@type": "City", "name": "Raleigh, NC" },
+        "priceRange": "$40-$70",
+        "paymentAccepted": "Cash, Check, Zelle"
+    }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
-    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div id="app-root"></div>
+    <noscript><p style="padding:2rem;text-align:center;font-family:sans-serif;">Swim for Life, LLC offers private swim lessons in the Raleigh, NC area. Please enable JavaScript to book online, or call 919-695-1534.</p></noscript>
     <script src="firebase-config.js"></script>
     <script type="text/babel" src="constants.js"></script>
     <script type="text/babel" src="AdminSchedulingPanel.js"></script>
